@@ -22,6 +22,7 @@
       </label>
     </div>
     <nav class="wrap nav" aria-label="섹션">
+      <a href="#upload">PDF 올리기</a>
       <a href="#summary">요약</a>
       <a href="#followup">지난 자료 대비</a>
       <a href="#flow">흐름 점검</a>
@@ -36,6 +37,31 @@
   </header>
 
   <main id="main">
+    <section id="upload" class="upload wrap" aria-labelledby="upload-title">
+      <div class="upload__zone" id="dropZone">
+        <div class="upload__text">
+          <h2 id="upload-title" class="upload__title">보도자료 PDF 2개로 분석하기</h2>
+          <p>산업통상부 「수출입 동향」과 국가데이터처 「산업활동동향」 PDF를 함께 올리세요. 예: 10월 수출입 동향 + 9월 산업활동동향. 파일은 이 브라우저 안에서만 읽으며 어디에도 전송되지 않습니다.</p>
+        </div>
+        <div class="upload__actions">
+          <label class="btn btn--ghost">PDF 고르기<input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden></label>
+          <span class="muted">또는 여기에 끌어다 놓기</span>
+          <button type="button" class="btn" id="analyzeBtn" disabled>분석하기</button>
+        </div>
+        <ul class="up-files" id="fileList"></ul>
+        <p class="up-status" id="uploadStatus" role="status" aria-live="polite"></p>
+      </div>
+      <details class="records">
+        <summary>기록 관리 <span class="muted" id="recordInfo"></span></summary>
+        <p>올린 기록은 이 브라우저에만 저장됩니다. 다른 기기나 다른 사람에게도 보이게 하려면 ‘seed.js 만들기’로 받은 파일을 저장소의 <code>assets/seed.js</code>에 덮어쓰고 올리세요.</p>
+        <div class="records__actions">
+          <button type="button" class="btn btn--ghost" id="exportBtn">내 기록 내보내기 (JSON)</button>
+          <label class="btn btn--ghost">기록 가져오기<input type="file" id="importInput" accept="application/json,.json" hidden></label>
+          <button type="button" class="btn btn--ghost" id="seedBtn">seed.js 만들기</button>
+        </div>
+      </details>
+    </section>
+
     <p class="banner wrap" id="archiveBanner" hidden></p>
     <section class="hero wrap" aria-labelledby="hero-title">
       <h1 id="hero-title" class="hero__lede"><span id="heroLede"></span></h1>
@@ -64,6 +90,7 @@
             </table>
           </div>
           <dl class="minis" id="industryExtra"></dl>
+          <p class="caption" id="industrySummary"></p>
         </article>
       </div>
       <article class="panel takeaways">
@@ -130,17 +157,15 @@
     <section id="workdays" class="section wrap" aria-labelledby="workdays-title">
       <h2 id="workdays-title">조업일수 확인</h2>
       <p class="section__intro" id="workdaysIntro"></p>
-      <div class="workdays">
-        <div class="calendars" id="calendars"></div>
-        <article class="panel">
-          <h3>월별 조업일수 <span class="muted">수출액 ÷ 일평균 수출액으로 역산</span></h3>
-          <div class="chart chart--sm"><canvas id="workdayChart" aria-label="월별 조업일수와 일평균 수출"></canvas></div>
-          <div class="table-scroll">
-            <table class="table table--dense" id="workdayTable"></table>
-          </div>
-        </article>
-      </div>
       <dl class="panel compare" id="workdayCompare"></dl>
+      <article class="panel">
+        <h3>월별 조업일수 <span class="muted">수출액 ÷ 일평균 수출액으로 역산</span></h3>
+        <div class="grid-2 wd-grid">
+          <div class="chart chart--md"><canvas id="workdayChart" aria-label="월별 조업일수와 일평균 수출"></canvas></div>
+          <div class="table-scroll"><table class="table table--dense" id="workdayTable"></table></div>
+        </div>
+      </article>
+
     </section>
 
     <!-- 가격 -->
@@ -212,9 +237,10 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- 기간별 데이터: 새 달을 추가하면 아래에 한 줄 추가 -->
-  <script src="assets/periods/2026-09.js"></script>
-  <script src="assets/periods/2026-10.js"></script>
+  <!-- 저장소에 올린 기본 기록 (사이트의 ‘seed.js 만들기’로 갱신) -->
+  <script src="assets/seed.js"></script>
+  <script src="assets/parser.js"></script>
+  <script src="assets/analyze.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>
