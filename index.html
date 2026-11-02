@@ -22,22 +22,16 @@
       </label>
     </div>
     <nav class="wrap nav" aria-label="섹션">
-      <a href="#upload">PDF 올리기</a>
-      <a href="#summary">요약</a>
-      <a href="#followup">지난 자료 대비</a>
-      <a href="#flow">흐름 점검</a>
-      <a href="#sectors">분야별</a>
-      <a href="#workdays">조업일수</a>
-      <a href="#prices">가격 변화</a>
-      <a href="#regions">지역</a>
-      <a href="#checklist">다음 체크</a>
-      <a href="#archive">기록</a>
-      <a href="#notes">유의사항</a>
+      <a href="#glance">한눈에 보기</a>
+      <a href="#report">보고서 요약</a>
+      <a href="#guide">투자자 읽는 법</a>
+      <a href="#detail" id="detailLink">자세한 분석</a>
+      <button type="button" class="nav__btn" id="uploadToggle" aria-expanded="false" aria-controls="upload">PDF 올리기</button>
     </nav>
   </header>
 
   <main id="main">
-    <section id="upload" class="upload wrap" aria-labelledby="upload-title">
+    <section id="upload" class="upload wrap" aria-labelledby="upload-title" hidden>
       <div class="upload__zone" id="dropZone">
         <div class="upload__text">
           <h2 id="upload-title" class="upload__title">보도자료 PDF 2개로 분석하기</h2>
@@ -63,14 +57,39 @@
     </section>
 
     <p class="banner wrap" id="archiveBanner" hidden></p>
-    <section class="hero wrap" aria-labelledby="hero-title">
+    <section id="glance" class="glance wrap" aria-labelledby="hero-title">
       <h1 id="hero-title" class="hero__lede"><span id="heroLede"></span></h1>
+      <div class="gcards" id="gcards"></div>
+    </section>
+
+    <section id="report" class="section wrap" aria-labelledby="report-title">
+      <h2 id="report-title">보고서 요약</h2>
+      <ul class="report" id="reportList"></ul>
+    </section>
+
+    <section id="guide" class="section wrap" aria-labelledby="guide-title">
+      <h2 id="guide-title">투자자라면 앞으로 이렇게 읽어보세요</h2>
+      <div class="guide" id="guideList"></div>
+      <p class="caption">특정 종목을 사고팔라는 권유가 아니에요. 보도자료 숫자를 어떤 순서로 읽으면 좋은지 정리한 거예요.</p>
+    </section>
+
+    <div class="wrap detail-toggle">
+      <button type="button" class="btn btn--ghost" id="detailBtn" aria-expanded="false" aria-controls="detail">자세한 분석 펼치기</button>
+      <span class="muted">흐름 점검, 분야별 동향, 조업일수, 가격 변화, 지역, 체크리스트, 기록</span>
+    </div>
+
+    <div id="detail" hidden>
+    <nav class="wrap subnav" aria-label="자세한 분석">
+      <a href="#summary">요약</a> <a href="#followup">지난 자료 대비</a> <a href="#flow">흐름 점검</a> <a href="#sectors">분야별</a> <a href="#workdays">조업일수</a> <a href="#prices">가격 변화</a> <a href="#regions">지역</a> <a href="#checklist">다음 체크</a> <a href="#archive">기록</a> <a href="#notes">유의사항</a>
+    </nav>
+    <section class="section wrap" aria-label="수출 구성">
       <figure class="mix" aria-labelledby="mix-cap">
         <figcaption id="mix-cap" class="mix__cap"><span id="mixMonth"></span> 20대 품목 수출 구성 <span class="muted">(막대를 누르면 해당 분야로 이동)</span></figcaption>
         <div class="mix__bar" id="mixBar"></div>
         <ul class="mix__legend" id="mixLegend"></ul>
       </figure>
     </section>
+
 
     <!-- 요약 -->
     <section id="summary" class="section wrap" aria-labelledby="summary-title">
@@ -228,6 +247,7 @@
       <h2 id="notes-title">자료 유의사항</h2>
       <ul class="notes" id="notesList"></ul>
     </section>
+    </div>
   </main>
 
   <footer class="footer">

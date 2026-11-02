@@ -700,6 +700,7 @@
 
   function renderAll() {
     if (window.Chart) Chart.defaults.font.family = css("--sans");
+    renderGlance();
     renderMix();
     renderSummary();
     renderFlow();
@@ -711,6 +712,81 @@
     renderWorkdays();
     renderPrices();
     renderRegions();
+  }
+
+  /* ---------- 한눈에 보기 ---------- */
+  function renderGlance() {
+    const S = R.simple || {};
+    const card = (id, q, x, body, wide) => !x ? "" : `<article class="gcard${wide ? " gcard--wide" : ""}">
+      <p class="gcard__q">${q}</p>
+      <p class="gcard__big">${esc(x.headline)}</p>
+      ${body}
+      <p class="gcard__text">${esc(x.text)}</p>
+      ${x.prev ? `<p class="gcard__prev">${esc(x.prev)}</p>` : ""}
+    </article>`;
+    const ratioBars = S.ratio ? `<div class="ratio">${S.ratio.rows.map((r) => `
+      <div class="ratio__row"><span class="ratio__name">${esc(r.name)} <span class="muted">${esc(r.month)} ${signed(r.v)}%</span></span>
+        <span class="ratio__bar" role="img" aria-label="가격 ${fmt(r.priceShare, 0)}%, 물량 ${fmt(r.volShare, 0)}%">
+          <span class="ratio__p" style="width:${Math.min(100, r.priceShare)}%">${r.priceShare >= 15 ? `가격 ${fmt(r.priceShare, 0)}` : ""}</span><span class="ratio__q" style="width:${Math.max(0, 100 - Math.min(100, r.priceShare))}%;${r.priceShare >= 100 ? "padding:0" : ""}">${r.volShare >= 15 ? `물량 ${fmt(r.volShare, 0)}` : ""}</span>
+        </span>${r.volDown ? `<span class="ratio__note">물량은 오히려 ${signed(r.cq)}%p</span>` : ""}</div>`).join("")}</div>` : "";
+    const autoRows = S.auto ? (() => {
+      const rows = S.auto.types.concat(S.auto.used ? [S.auto.used] : []);
+      const max = Math.max(...rows.map((r) => Math.abs(r.yoy)), 1);
+      return `<ul class="autobars">${rows.map((r) => `<li>
+        <span class="autobars__name">${esc(r.name)}</span>
+        <span class="autobars__amt">${fmt(r.from)} → <b>${fmt(r.to)}</b>억 달러</span>
+        <span class="autobars__track"><span class="autobars__fill ${r.yoy >= 0 ? "is-up" : "is-down"}" style="width:${Math.abs(r.yoy) / max * 100}%"></span></span>
+        <span class="autobars__v ${cls(r.yoy)}">${signed(r.yoy)}%</span></li>`).join("")}</ul>
+        ${S.auto.regions.length ? `<p class="caption">지역(${R.labels.regionBasis.split(" 기준")[0]}): ${S.auto.regions.map((g) => `${esc(g.name)} ${signed(g.yoy)}%`).join(", ")}</p>` : ""}`;
+    })() : "";
+    $("#gcards").innerHTML =
+      card("price", "반도체 가격은 어떻게 움직이나", S.price, `<div class="chart chart--xs"><canvas id="g-price" aria-label="DDR5·NAND 고정가격"></canvas></div>`) +
+      card("volume", "반도체 물량은 따라오나", S.volume, `<div class="chart chart--xs"><canvas id="g-volume" aria-label="반도체 생산과 수출 증감률"></canvas></div>`) +
+      card("ratio", "가격 몫과 물량 몫", S.ratio, ratioBars) +
+      card("nonsemi", "반도체를 빼도 수출이 늘었나", S.nonSemi, `<div class="chart chart--xs"><canvas id="g-nonsemi" aria-label="전체 수출과 반도체 제외 수출 증감률"></canvas></div>`) +
+      card("auto", "자동차, 무엇이 늘었나", S.auto ? Object.assign({}, S.auto, { headline: `${S.auto.headline}${R.workdays.prev !== R.workdays.curr ? ` (일평균 ${signed(S.auto.adj)}%)` : ""}` }) : null, autoRows, true);
+
+    const small = (extra) => baseOptions(Object.assign({ plugins: { legend: { labels: { color: css("--muted"), boxWidth: 8, font: { size: 10 } } } } }, extra));
+    if (S.price) makeChart("g-price", { type: "line", data: { labels: S.price.labels, datasets: [
+      { label: "DDR5 16Gb", data: S.price.ddr5, borderColor: css("--up"), backgroundColor: css("--up"), pointRadius: 2, tension: 0 },
+      { label: "NAND 128Gb", data: S.price.nand, borderColor: css("--down"), backgroundColor: css("--down"), pointRadius: 2, tension: 0 }] }, options: small() });
+    if (S.volume) makeChart("g-volume", { type: "line", data: { labels: S.volume.labels, datasets: [
+      { label: "반도체 생산(전년비 %)", data: S.volume.prodYoy, borderColor: css("--down"), backgroundColor: css("--down"), pointRadius: 2, tension: 0 }] }, options: small() });
+    if (S.nonSemi) makeChart("g-nonsemi", { type: "line", data: { labels: S.nonSemi.labels, datasets: [
+      { label: "전체 수출", data: S.nonSemi.totalYoy, borderColor: css("--muted"), backgroundColor: css("--muted"), pointRadius: 1.5, tension: 0 },
+      { label: "반도체 뺀 수출", data: S.nonSemi.nonSemiYoy, borderColor: css("--up"), backgroundColor: css("--up"), pointRadius: 2, tension: 0 }] }, options: small() });
+
+    $("#reportList").innerHTML = (S.summary || []).map((t) => `<li>${esc(t)}</li>`).join("");
+    $("#guideList").innerHTML = (S.guide || []).map((g) => `<article class="guide__item"><h3>${esc(g.title)}</h3><p>${esc(g.text)}</p></article>`).join("");
+  }
+  function openDetail(scrollTo) {
+    const d = $("#detail");
+    if (d.hidden) {
+      d.hidden = false;
+      $("#detailBtn").setAttribute("aria-expanded", "true");
+      $("#detailBtn").textContent = "자세한 분석 접기";
+      Object.values(charts).forEach((c) => c.resize());
+    }
+    if (scrollTo) { const el = document.getElementById(scrollTo); if (el) el.scrollIntoView(); }
+  }
+  function initToggles() {
+    $("#detailBtn").addEventListener("click", () => {
+      const d = $("#detail");
+      if (d.hidden) openDetail("detail");
+      else { d.hidden = true; $("#detailBtn").setAttribute("aria-expanded", "false"); $("#detailBtn").textContent = "자세한 분석 펼치기"; }
+    });
+    $("#detailLink").addEventListener("click", (e) => { e.preventDefault(); openDetail("detail"); });
+    $("#uploadToggle").addEventListener("click", () => {
+      const u = $("#upload"); u.hidden = !u.hidden;
+      $("#uploadToggle").setAttribute("aria-expanded", String(!u.hidden));
+      if (!u.hidden) u.scrollIntoView();
+    });
+    // 주소의 #이 자세한 분석 안쪽을 가리키면 펼치기
+    const h = location.hash.replace("#", "");
+    const target = h && document.getElementById(h);
+    if (target && $("#detail").contains(target)) openDetail(h);
+    if (R && R.sectors.some((s) => s.id === h)) openDetail("sectors");
+    window.addEventListener("hashchange", () => { const x = location.hash.replace("#", ""); const t = x && document.getElementById(x); if (t && $("#detail").contains(t)) openDetail(x); });
   }
 
   /* ---------- PDF 업로드 ---------- */
@@ -774,7 +850,7 @@
     const local = loadLocal().filter((r) => r.id !== id);
     local.push(rec);
     if (!saveLocal(local)) { status("브라우저 저장 공간이 부족해 기록을 저장하지 못했습니다. ‘기록 관리’에서 내보내기 후 오래된 기록을 지워 주세요.", "warn"); return; }
-    location.href = `${periodUrl(id)}#summary`;
+    location.href = `${periodUrl(id)}#glance`;
   }
   function deleteRecord(id) {
     if (!confirm(`${id} 기록을 이 브라우저에서 지울까요?`)) return;
@@ -816,7 +892,8 @@
   // 시작
   initUpload();
   if (!R) {
-    document.querySelectorAll("main > section:not(#upload), .nav").forEach((el) => { el.hidden = true; });
+    $("#upload").hidden = false;
+    document.querySelectorAll("main > section:not(#upload), main > .detail-toggle, .nav").forEach((el) => { el.hidden = true; });
     status("아직 기록이 없습니다. 보도자료 PDF 2개를 올리면 분석이 시작됩니다.");
     return;
   }
@@ -826,6 +903,6 @@
   renderNotes();
   renderAll();
   navSpy();
-  if (R.sectors.some((s) => s.id === hash)) $("#sectors").scrollIntoView();
+  initToggles();
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
 })();
