@@ -374,6 +374,7 @@
 
     // 체크리스트
     P.simple = buildSimple(P, rec, { items, idxLabels, semiExpAtIndex, exportMonthly, prevPeriod, blk, ir, main });
+    P.brief = buildBrief(P, rec, prevRec, prevPeriod, { items, exportMonthly, ir, main, blk });
     P.checklist = buildChecklist(P, rec);
     // 지난 기록 대비
     if (prevRec && prevPeriod) {
@@ -518,6 +519,208 @@
     g.push({ title: "발표 일정", text: "수출입동향은 매월 1일, 산업활동동향은 매월 말일 전후에 나와요. 둘을 함께 올리면 지난달 확인 항목을 자동으로 채점해 줘요." });
     S.guide = g;
     return S;
+  }
+
+  /* ---------- 간결한 화면용 데이터 ---------- */
+  const b = (v, d = 1, u = "%") => `<b>${signed(v, d)}${u}</b>`;
+  function buildBrief(P, rec, prevRec, prevP, c) {
+    const T = rec.trade, I = rec.industry, TM = P.labels.tradeMonth, IM = P.labels.industryMonth;
+    const { items, exportMonthly, ir, main, blk } = c;
+    const S = P.simple || {};
+    const B = {};
+    const names = Object.keys(items);
+    const it = (n) => items[n];
+    const amt = (n, k) => items[n].monthly[k] / 100;
+    const mainV = (k) => I.main && I.main[k] ? I.main[k] : {};
+
+    /* 20대 품목 표 */
+    const rows = names.map((n) => {
+      const cur = amt(n, 12), prev = amt(n, 11), y1 = it(n).yoy[12], y0 = it(n).yoy[11];
+      return { name: n, prev, cur, mom: (cur / prev - 1) * 100, y0, y1, dy: y1 - y0 };
+    }).sort((a, z) => z.cur - a.cur);
+    B.items = {
+      rows,
+      plusTurn: rows.filter((r) => r.y0 <= 0 && r.y1 > 0).map((r) => r.name),
+      minusTurn: rows.filter((r) => r.y0 > 0 && r.y1 <= 0).map((r) => r.name),
+      better: rows.filter((r) => r.dy >= 5).map((r) => r.name),
+      worse: rows.filter((r) => r.dy <= -5).map((r) => r.name),
+      prevMonth: P.months[11].replace(/^’\d{2}\./, "") + "월", curMonth: TM,
+      tiles: [
+        { label: "전체 수출", value: T.export.yoy, sub: `${fmt(T.export.value, 0)}억 달러` },
+        { label: "반도체", value: it("반도체") ? it("반도체").yoy[12] : null, sub: it("반도체") ? `${fmt(amt("반도체", 12))}억 달러, 비중 ${fmt(amt("반도체", 12) / T.export.value * 100)}%` : "" },
+        { label: "반도체 뺀 수출", value: S.nonSemi ? S.nonSemi.cur : null, sub: S.nonSemi && P.workdays.prev !== P.workdays.curr ? `조업일수 감안 ${signed(S.nonSemi.adj)}%` : "전년동월비" },
+        { label: "늘어난 품목", value: null, text: `${rows.filter((r) => r.y1 > 0).length} / ${rows.length}개`, sub: "20대 품목" }
+      ]
+    };
+
+    /* 수출 물량·가격 */
+    const estUnit = (v, q) => v == null || q == null ? null : ((1 + v / 100) / (1 + q / 100) - 1) * 100;
+    const ty = T.exportYoy, tq = T.exportVolumeYoy || [];
+    B.volPrice = {
+      tiles: [
+        { label: "수출액", value: T.export.yoy, sub: "전년동월비" },
+        { label: "수출물량 (톤)", value: last(tq), sub: "전년동월비" },
+        { label: "추정 수출단가", value: estUnit(T.export.yoy, last(tq)), sub: "금액 ÷ 물량" },
+        { label: "수입물량 (톤)", value: last(T.importVolumeYoy), sub: `수입액 ${signed(T.import.yoy)}%` }
+      ],
+      items: [
+        T.petro ? { name: "석유제품", v: T.petro.yoy, q: T.petro.volumeYoy, p: T.petro.unitYoy, note: `물량 ${fmt(T.petro.volume, 0)}만 톤, 단가 ${fmt(T.petro.unit, 0)}달러/톤` } : null,
+        T.petchem ? { name: "석유화학", v: T.petchem.yoy, q: T.petchem.volumeYoy, p: T.petchem.unitYoy, note: `물량 ${fmt(T.petchem.volume, 0)}만 톤, 단가 ${fmt(T.petchem.unit, 0)}달러/톤` } : null,
+        blk("철강") && blk("철강").unitPrice && it("철강") ? { name: "철강", v: it("철강").yoy[12], q: null, p: blk("철강").unitPrice.yoy, note: `수출단가 ${fmt(blk("철강").unitPrice.to, 0)}달러/톤` } : null,
+        S.ratio && S.ratio.rows[0] && ir("반도체") ? { name: `반도체 (${IM})`, v: S.ratio.rows[0].v, q: ir("반도체").prod[1], p: estUnit(S.ratio.rows[0].v, ir("반도체").prod[1]), note: "물량은 반도체 생산지수로 대신" } : null
+      ].filter(Boolean),
+      months: P.months.map((m) => m.replace("’", "")), value: ty, volume: tq, unit: ty.map((v, k) => estUnit(v, tq[k]))
+    };
+
+    /* 반도체 */
+    const sr = ir("반도체"), pr = prevRec && prevRec.industry && prevRec.industry.industryRows && prevRec.industry.industryRows["반도체"];
+    const mem = T.memory;
+    if (mem) {
+      const momArr = (a) => a.map((x, k) => k ? (x / a[k - 1] - 1) * 100 : null);
+      B.semi = {
+        tiles: [
+          { label: "DDR5 16Gb", text: `${fmt(last(mem.ddr5))}달러`, value: S.price ? S.price.ddr5Mom : null, sub: "전월비" },
+          { label: "NAND 128Gb", text: `${fmt(last(mem.nand))}달러`, value: S.price ? S.price.nandMom : null, sub: "전월비" },
+          S.ratio && S.ratio.rows[0] ? { label: "가격 : 물량", text: `${fmt(S.ratio.rows[0].priceShare, 0)} : ${fmt(S.ratio.rows[0].volShare, 0)}`, sub: `${IM} 반도체 수출 증가분` } : null,
+          sr ? { label: "재고 − 출하", text: `${signed(sr.inv[1] - sr.ship[1])}%p`, sub: `${IM} 전년비, 클수록 재고 부담` } : null
+        ].filter(Boolean),
+        price: { labels: mem.labels.map((l) => l.replace("’", "")), ddr5: mem.ddr5, nand: mem.nand, ddr5Mom: momArr(mem.ddr5), nandMom: momArr(mem.nand) },
+        industry: sr ? [
+          { name: "생산", mom: sr.prod[0], yoy: sr.prod[1], pmom: pr && pr.prod[0], pyoy: pr && pr.prod[1] },
+          { name: "출하", mom: sr.ship[0], yoy: sr.ship[1], pmom: pr && pr.ship[0], pyoy: pr && pr.ship[1] },
+          { name: "재고", mom: sr.inv[0], yoy: sr.inv[1], pmom: pr && pr.inv[0], pyoy: pr && pr.inv[1] }
+        ] : [],
+        prevIM: prevRec ? `${prevRec.industry.month}월` : "",
+        series: S.volume ? { labels: S.volume.labels.map((l) => l.replace("’", "")), exp: S.volume.exportYoy, prod: S.volume.prodYoy, share: S.ratio ? S.ratio.semiPriceShare : [] } : null
+      };
+    }
+
+    /* 자동차 */
+    if (S.auto && S.auto.types.length) {
+      const A0 = S.auto, tot = A0.total, d = tot.cur - tot.prev;
+      const r = A0.types.map((x) => ({ name: x.name, from: x.from, to: x.to, yoy: x.yoy, diff: x.to - x.from }));
+      const extra = [A0.newCar ? { name: "신차", from: A0.newCar.from, to: A0.newCar.to, yoy: A0.newCar.yoy, diff: A0.newCar.to - A0.newCar.from } : null, A0.used ? { name: "중고차", from: A0.used.from, to: A0.used.to, yoy: A0.used.yoy, diff: A0.used.to - A0.used.from } : null].filter(Boolean);
+      B.auto = {
+        tiles: [
+          { label: "자동차 수출", value: tot.yoy, sub: P.workdays.prev !== P.workdays.curr ? `일평균 ${signed(A0.adj)}%` : `${fmt(tot.cur)}억 달러` },
+          ...r.map((x) => ({ label: x.name, value: x.yoy, sub: `${fmt(x.to)}억 달러` })),
+          ...(A0.used ? [{ label: "중고차", value: A0.used.yoy, sub: `${fmt(A0.used.to)}억 달러` }] : [])
+        ],
+        byType: r, byKind: extra, total: { from: tot.prev, to: tot.cur, yoy: tot.yoy, diff: d }, text: A0.text,
+        regions: A0.regions, prod: ir("자동차")
+      };
+    }
+
+    /* 보고서 요약 */
+    const top = rows.filter((r) => r.y1 > 0).sort((a, z) => z.y1 - a.y1).slice(0, 3), down = rows.filter((r) => r.y1 <= 0).sort((a, z) => a.y1 - z.y1);
+    const tradeSum = [
+      `${TM} 수출은 ${fmt(T.export.value, 0)}억 달러로 전년동월대비 ${signed(T.export.yoy)}%, 수입은 ${signed(T.import.yoy)}%, 무역수지는 ${signed(P.trade.balance.value, 0)}억 달러예요.`,
+      `20대 품목 중 ${rows.filter((r) => r.y1 > 0).length}개가 늘었어요. 많이 늘어난 품목: ${top.map((r) => `${r.name}(${signed(r.y1)}%)`).join(", ")}.${down.length ? ` 줄어든 품목: ${down.slice(0, 3).map((r) => `${r.name}(${signed(r.y1)}%)`).join(", ")}.` : ""}`,
+      it("반도체") ? `최대 품목 반도체는 ${fmt(amt("반도체", 12))}억 달러로 전체 수출의 ${fmt(amt("반도체", 12) / T.export.value * 100)}%예요. 반도체를 뺀 수출은 ${signed(S.nonSemi.cur)}%예요.` : "",
+      `수출물량(톤)은 ${signed(last(tq))}%, 금액과 물량으로 계산한 추정 단가는 ${signed(estUnit(T.export.yoy, last(tq)))}%예요.`,
+      T.petro ? `석유제품: 수출액 ${signed(T.petro.yoy)}% = 물량 ${signed(T.petro.volumeYoy)}% · 단가 ${signed(T.petro.unitYoy)}%.` : "",
+      S.auto ? `자동차 ${signed(S.auto.total.yoy)}%: ${S.auto.types.map((x) => `${x.name.replace("차", "")} ${signed(x.yoy)}%`).join(", ")}.` : ""
+    ].filter(Boolean);
+    const contrib = Object.entries(I.industryRows || {}).filter(([n, r]) => r.w && r.prod[0] != null && !/광공업|제조업|광업|전기·가스업|전자·통신/.test(n)).map(([n, r]) => ({ n, c: r.w * r.prod[0], v: r.prod[0] }));
+    const upI = contrib.slice().sort((a, z) => z.c - a.c).filter((x) => x.c > 0).slice(0, 2), dnI = contrib.slice().sort((a, z) => a.c - z.c).filter((x) => x.c < 0).slice(0, 2);
+    const indSum = [
+      `${IM} 전산업생산은 전월대비 ${signed(mainV("전산업_mom").cur)}%, 전년동월대비 ${signed(mainV("전산업_yoy").cur)}%예요. 광공업 ${signed(mainV("광공업_mom").cur)}%, 서비스업 ${signed(mainV("서비스업_mom").cur)}%(전월비)예요.`,
+      `제조업에서는 ${upI.map((x) => `${x.n}(${signed(x.v)}%)`).join("·")} 생산이 늘고, ${dnI.map((x) => `${x.n}(${signed(x.v)}%)`).join("·")} 생산이 줄었어요(전월비, 비중 반영).`,
+      `소매판매는 전월대비 ${signed(mainV("소매판매_mom").cur)}%, 설비투자는 ${signed(mainV("설비투자_mom").cur)}%, 건설기성은 ${signed(mainV("건설기성_mom").cur)}%예요.`,
+      `수출출하는 전년동월대비 ${signed(mainV("수출출하_yoy").cur)}%, 내수출하는 ${signed(mainV("내수출하_yoy").cur)}%예요. 제조업 가동률은 ${fmt(mainV("가동률").cur)}%(${signed(mainV("가동률").cur - mainV("가동률").prev)}%p)예요.`,
+      `동행지수 순환변동치 ${signed(mainV("동행순환_diff").cur)}p, 선행지수 순환변동치 ${signed(mainV("선행순환_diff").cur)}p예요.`
+    ];
+    B.summary = {
+      trade: { title: `${T.year}년 ${T.month}월 수출입동향 요약`, src: `산업통상부 ${T.year}년 ${T.month}월 수출입 동향 · ${T.releaseDate} 발표`, items: tradeSum },
+      industry: { title: `${I.year}년 ${I.month}월 산업활동동향 요약`, src: `국가데이터처 ${I.year}년 ${I.month}월 산업활동동향 · ${I.releaseDate} 발표`, items: indSum }
+    };
+
+    /* 투자자라면 앞으로 이렇게 읽어보세요 */
+    const G = [];
+    if (sr) {
+      const shipUp = sr.ship[0] > 0, invUp = sr.inv[0] > 0;
+      const badge = shipUp && !invUp ? ["양호", "green"] : !shipUp && invUp ? ["경계", "red"] : ["혼조", "gray"];
+      G.push({ title: "반도체는 수출액보다 재고와 출하를 먼저 보세요", badge,
+        data: `${IM} 반도체 출하 전월비 ${b(sr.ship[0])}, 재고 전월비 ${b(sr.inv[0])}${pr ? `(전월 출하 ${signed(pr.ship[0])}%, 재고 ${signed(pr.inv[0])}%)` : ""}. 전년비로는 출하 ${signed(sr.ship[1])}%, 재고 ${signed(sr.inv[1])}%예요. 같은 시기 수출액은 ${signed(S.ratio && S.ratio.rows[0] ? S.ratio.rows[0].v : null)}%로 ${S.ratio && S.ratio.rows[0] && S.ratio.rows[0].v > sr.ship[1] + 20 ? "훨씬 강해요" : "비슷해요"}.`,
+        read: "수출은 계속 강한데 반도체 재고가 다시 쌓이기 시작하면 경계해야 해요. 반대로 출하 증가와 재고 감소가 이어지면 수요의 질이 좋은 거예요. 한 달 수치보다 두세 달 연속인지가 중요해요." });
+    }
+    {
+      const q = last(tq), up = estUnit(T.export.yoy, q), pq = tq[11], pu = estUnit(ty[11], pq);
+      const priceOnly = [T.petro ? { n: "석유제품", q: T.petro.volumeYoy, p: T.petro.unitYoy } : null, T.petchem ? { n: "석유화학", q: T.petchem.volumeYoy, p: T.petchem.unitYoy } : null].filter((x) => x && x.q < 0 && x.p > 0);
+      const dm = mem ? mem.ddr5.map((x, k) => k ? (x / mem.ddr5[k - 1] - 1) * 100 : null).slice(-3) : [];
+      const dl = mem ? mem.labels.slice(-3).map((l) => l.replace(/^’\d{2}\./, "") + "월") : [];
+      const accel = dm.length === 3 ? (dm[2] > dm[1] + 0.3 ? "빨라졌어요" : dm[2] < dm[1] - 0.3 ? "느려졌어요" : "비슷해요") : "";
+      G.push({ title: "수출 증가를 가격과 물량으로 분리하세요", badge: q < 0 || (up > 0 && up > q * 2) ? ["가격 주도", "amber"] : ["물량 동반", "green"],
+        data: `${TM} 전체 수출은 물량 ${signed(q)}%, 추정 단가 ${signed(up)}%(전월 물량 ${signed(pq)}%, 단가 ${signed(pu)}%).${priceOnly.length ? ` 물량은 줄고 단가만 오른 품목: <b>${priceOnly.map((x) => `${x.n}(물량 ${signed(x.q)}%, 단가 ${signed(x.p)}%)`).join(", ")}</b>.` : ""}${mem ? ` DDR5 16Gb 고정가는 ${fmt(last(mem.ddr5))}달러예요. 전월 대비 상승률은 ${dl.map((l, k) => `${l} ${signed(dm[k])}%`).join(" → ")}로 <b>상승 속도가 ${accel}</b>.` : ""}`,
+        read: "물량과 가격이 같이 좋아지는 산업과, 물량이 줄고 단가만 오르는 산업은 같은 ‘+수출’이라도 의미가 달라요. 가격 지표는 수준보다 변화 속도로 보세요. 수출 뉴스는 ① 물량이 늘었는지 → ② 단가가 올랐는지 → ③ 단가 상승률이 전달보다 커졌는지 순서로 확인하면 돼요." });
+    }
+    {
+      const sig = [];
+      const add = (label, v) => { if (v != null && !isNaN(v)) sig.push({ label, v, on: v > 0 }); };
+      const imp = (T.importItems || []).find((x) => x.name === "반도체장비");
+      add("반도체장비 수입", imp && imp.yoy);
+      add("컴퓨터(SSD) 수출", it("컴퓨터") && it("컴퓨터").yoy[12]);
+      add("전기기기 수출(전선·변압기)", it("전기기기") && it("전기기기").yoy[12]);
+      add(`전기장비 생산(${IM})`, ir("전기장비") && ir("전기장비").prod[1]);
+      add(`기계장비 생산(${IM})`, ir("기계장비") && ir("기계장비").prod[1]);
+      add(`설비투자 기계류(${IM})`, I.invest && I.invest.machYoy);
+      add(`국내 기계수주(${IM})`, mainV("기계수주_yoy").cur);
+      const on = sig.filter((x) => x.on).length;
+      G.push({ title: "AI 사이클이 반도체 밖으로 퍼지는지 보세요", badge: on >= sig.length - 1 ? ["확산 신호 넓게 보임", "green"] : on >= sig.length / 2 ? ["일부 확산", "amber"] : ["반도체에 집중", "red"],
+        data: `확산 단계별 신호 ${sig.length}개 중 <b>${on}개</b>가 켜져 있어요.`, chips: sig,
+        read: "반도체 장비 → SSD → 전기기기 → 변압기·전선 → 기계류 수주로 이어지는지가 중요해요. 수출만이 아니라 국내 설비투자와 기계수주까지 번지면 AI 호황이 기업 투자로 확산되는 그림이에요." });
+    }
+    if (S.nonSemi) {
+      const n = S.nonSemi;
+      G.push({ title: "반도체를 빼고도 늘었는지 보세요", badge: n.cur > 10 && n.upCount >= 15 ? ["고르게 증가", "green"] : n.cur > 0 ? ["일부 증가", "amber"] : ["반도체 쏠림", "red"],
+        data: `반도체를 뺀 수출 ${b(n.cur)}${P.workdays.prev !== P.workdays.curr ? `(조업일수 감안 ${signed(n.adj)}%)` : ""}, 전월 ${signed(n.nonSemiYoy[11])}%. 20대 품목 중 <b>${n.upCount}개</b>가 늘었어요.`,
+        read: "반도체만 늘면 수출 호조가 한 업종에 몰린 거예요. 반도체를 뺀 수출도 두 자릿수로 늘고 늘어난 품목 수가 많아야 회복이 넓게 퍼진 거예요. 명절이 낀 달은 조업일수를 감안한 숫자로 보세요." });
+    }
+    {
+      const ret = mainV("소매판매_yoy"), dom = mainV("내수출하_yoy"), exs = mainV("수출출하_yoy");
+      const gap = T.export.yoy - ret.cur;
+      G.push({ title: "내수와 수출의 간격을 확인하세요", badge: ret.cur < 0 && gap > 30 ? ["양극화 지속 · 내수 약함", "red"] : ret.cur > 0 && dom.cur > 0 ? ["내수 회복 신호", "green"] : ["내수 보합", "gray"],
+        data: `${IM} 소매판매 전년비 ${b(ret.cur)}(전월 ${signed(ret.prev)}%), 내수출하 ${b(dom.cur)}, 수출출하 ${signed(exs.cur)}%. 반면 ${TM} 수출액은 ${signed(T.export.yoy)}%라 수출과 내수의 간격이 <b>${signed(gap)}%p</b>예요.`,
+        read: "소매판매와 내수출하가 회복하면 수출주 중심의 장세가 국내 소비·경기민감 업종으로 넓어질 가능성을 생각할 수 있어요. 반대로 계속 약하면 경기 양극화가 이어지는 거예요." });
+    }
+    if (S.auto && S.auto.types.length) {
+      const a = ir("자동차"), pa = prevRec && prevRec.industry.industryRows && prevRec.industry.industryRows["자동차"];
+      const h = S.auto.types.find((x) => /하이브리드/.test(x.name)), e = S.auto.types.find((x) => /전기/.test(x.name)), i0 = S.auto.types.find((x) => /내연/.test(x.name));
+      const nm = T.month === 12 ? 1 : T.month + 1;
+      G.push({ title: "자동차는 차종을 나눠 보세요", badge: h && h.diff > 0 && (!i0 || h.diff > i0.diff) ? ["하이브리드 주도", "green"] : S.auto.total.yoy < 0 ? ["약세", "red"] : ["혼조", "gray"],
+        data: `${a ? `${IM} 자동차 생산 전월비 ${b(a.prod[0])}, 전년비 ${signed(a.prod[1])}%${pa ? `(전월 ${signed(pa.prod[1])}%)` : ""}. ` : ""}${TM} 자동차 수출 ${b(S.auto.total.yoy)}: 하이브리드 ${signed(h && h.yoy)}%, 전기차 ${signed(e && e.yoy)}%, 내연기관 ${signed(i0 && i0.yoy)}%${S.auto.used ? `, 중고차 ${signed(S.auto.used.yoy)}%` : ""}.`,
+        read: `총액보다 차종별로 보세요. 친환경차가 증가분을 이끄는지, 중고차처럼 정세에 흔들리는 부분이 끌어내리는지가 달라요. 조업일수가 정상화된 뒤에도 생산·수출이 약하면 그때는 사이클 약화를 더 진지하게 볼 필요가 있어요. ${nm}월 수출입동향에서 다시 확인하세요.` });
+    }
+    {
+      const mo = I.machOrders, lead = mainV("선행순환_diff"), lv = mainV("선행순환_level");
+      const ordUp = (mo ? mo.private : mainV("기계수주_yoy").cur) > 0, leadUp = lead.cur > 0;
+      G.push({ title: "민간 기계수주와 선행지수를 같이 보세요", badge: ordUp && leadUp ? ["같이 개선", "green"] : ordUp && !leadUp ? ["수주는 강한데 선행지수는 꺾임 · 엇갈림", "amber"] : !ordUp && leadUp ? ["엇갈림", "amber"] : ["같이 약화", "red"],
+        data: `${IM} 국내 기계수주 전년비 ${b(mainV("기계수주_yoy").cur)}${mo ? `(민간 ${b(mo.private)}, 공공 ${signed(mo.public)}%)` : ""}. 선행지수 순환변동치 ${signed(lead.prev)}p → ${b(lead.cur, 1, "p")}${lv.cur != null ? ` (${fmt(lv.cur)})` : ""}.`,
+        read: "민간 기계수주 증가가 이어지고 선행지수도 다시 오르면 AI·수출 호황이 기업 투자와 국내 경기로 확산되는 그림에 힘이 실려요. 반대로 기계수주가 꺾이고 선행지수도 계속 내려오면 지금의 수출 호조가 일부 업종에 머물 가능성을 봐야 해요." });
+    }
+    B.guide = { intro: `앞으로 매달 산업활동동향과 수출입동향을 볼 때는 헤드라인 숫자보다 아래 순서로 보는 게 훨씬 유용해요. 각 항목의 '이번 데이터'는 ${I.year}년 ${I.month}월 산업활동동향과 ${T.year}년 ${T.month}월 수출입동향에서 계산했어요.`, items: G };
+
+    /* 지난 기록과 비교 */
+    if (prevP && prevP.brief) {
+      const pS = prevP.simple || {};
+      const row = (label, a, z, u = "%", d = 1) => ({ label, a, z, u, d });
+      B.compare = {
+        prevLabel: prevP.label, curLabel: P.label,
+        rows: [
+          row("수출 증가율", prevP.trade.export.yoy, T.export.yoy),
+          row("수출물량", last(prevP.trade.exportVolumeYoy), last(tq)),
+          row("반도체 수출 증가율", pS.ratio && pS.ratio.rows[0] ? (prevP.brief.items.rows.find((r) => r.name === "반도체") || {}).y1 : null, (rows.find((r) => r.name === "반도체") || {}).y1),
+          row("반도체 가격 몫", pS.ratio && pS.ratio.rows[0] ? pS.ratio.rows[0].priceShare : null, S.ratio && S.ratio.rows[0] ? S.ratio.rows[0].priceShare : null, "%", 0),
+          row("반도체 재고 − 출하", pS.volume ? pS.volume.inv[1] - pS.volume.ship[1] : null, S.volume ? S.volume.inv[1] - S.volume.ship[1] : null, "%p"),
+          row("반도체 뺀 수출", pS.nonSemi ? pS.nonSemi.cur : null, S.nonSemi ? S.nonSemi.cur : null),
+          row("자동차 수출", pS.auto ? pS.auto.total.yoy : null, S.auto ? S.auto.total.yoy : null),
+          row("DDR5 고정가격", pS.price ? last(pS.price.ddr5) : null, S.price ? last(S.price.ddr5) : null, "달러"),
+          row("NAND 고정가격", pS.price ? last(pS.price.nand) : null, S.price ? last(S.price.nand) : null, "달러")
+        ],
+        revisions: P.revisions || []
+      };
+    }
+    return B;
   }
 
   /* ---------- 체크리스트 (측정 지표 포함) ---------- */

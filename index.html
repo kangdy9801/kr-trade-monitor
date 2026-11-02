@@ -3,260 +3,111 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>수출입·산업활동 브리핑</title>
-  <meta name="description" content="매월 수출입 동향과 산업활동동향을 분야별 흐름, 조업일수, 가격·물량 변화로 정리하고 지난 자료와 비교하는 브리핑">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@600;700;900&display=swap" rel="stylesheet">
+  <title>수출입·산업활동 리포트</title>
+  <meta name="description" content="수출입 동향과 산업활동동향 PDF를 올리면 반도체 가격·물량, 반도체 뺀 수출, 자동차 차종별 흐름을 간결하게 정리합니다">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
   <a class="skip" href="#main">본문으로 건너뛰기</a>
 
-  <header class="masthead">
-    <div class="wrap masthead__row">
-      <p class="brand">수출입·산업활동 브리핑</p>
-      <label class="period">기준 자료
-        <select id="periodSelect" aria-label="기준 보도자료 선택"></select>
-      </label>
+  <header class="top">
+    <div class="wrap top__row">
+      <p class="brand">수출입·산업활동 리포트</p>
+      <div class="top__actions">
+        <label class="period"><span>기준 자료</span><select id="periodSelect" aria-label="기준 자료 선택"></select></label>
+        <button type="button" class="btn" id="uploadToggle" aria-expanded="false" aria-controls="upload">PDF 올리기</button>
+      </div>
     </div>
     <nav class="wrap nav" aria-label="섹션">
-      <a href="#glance">한눈에 보기</a>
-      <a href="#report">보고서 요약</a>
-      <a href="#guide">투자자 읽는 법</a>
-      <a href="#detail" id="detailLink">자세한 분석</a>
-      <button type="button" class="nav__btn" id="uploadToggle" aria-expanded="false" aria-controls="upload">PDF 올리기</button>
+      <a href="#s-summary">요약</a>
+      <a href="#s-semi">반도체</a>
+      <a href="#s-volprice">물량·가격</a>
+      <a href="#s-items">20대 품목</a>
+      <a href="#s-auto">자동차</a>
+      <a href="#s-guide">읽는 법</a>
+      <a href="#s-compare" id="navCompare">지난달 비교</a>
     </nav>
   </header>
 
-  <main id="main">
-    <section id="upload" class="upload wrap" aria-labelledby="upload-title" hidden>
-      <div class="upload__zone" id="dropZone">
-        <div class="upload__text">
-          <h2 id="upload-title" class="upload__title">보도자료 PDF 2개로 분석하기</h2>
-          <p>산업통상부 「수출입 동향」과 국가데이터처 「산업활동동향」 PDF를 함께 올리세요. 예: 10월 수출입 동향 + 9월 산업활동동향. 파일은 이 브라우저 안에서만 읽으며 어디에도 전송되지 않습니다.</p>
-        </div>
-        <div class="upload__actions">
-          <label class="btn btn--ghost">PDF 고르기<input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden></label>
-          <span class="muted">또는 여기에 끌어다 놓기</span>
-          <button type="button" class="btn" id="analyzeBtn" disabled>분석하기</button>
-        </div>
-        <ul class="up-files" id="fileList"></ul>
-        <p class="up-status" id="uploadStatus" role="status" aria-live="polite"></p>
+  <main id="main" class="wrap">
+    <section id="upload" class="card upload" hidden aria-labelledby="upload-title">
+      <h2 id="upload-title" class="card__title">보도자료 PDF 2개 올리기</h2>
+      <p class="muted">산업통상부 「수출입 동향」과 국가데이터처 「산업활동동향」을 함께 올리세요. 예: 10월 수출입 동향 + 9월 산업활동동향. 파일은 이 브라우저 안에서만 읽어요.</p>
+      <div class="drop" id="dropZone">
+        <label class="btn btn--ghost">PDF 고르기<input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden></label>
+        <span class="muted">또는 여기에 끌어다 놓기</span>
+        <button type="button" class="btn" id="analyzeBtn" disabled>분석하기</button>
       </div>
+      <ul class="files" id="fileList"></ul>
+      <p class="status" id="uploadStatus" role="status" aria-live="polite"></p>
       <details class="records">
         <summary>기록 관리 <span class="muted" id="recordInfo"></span></summary>
-        <p>올린 기록은 이 브라우저에만 저장됩니다. 다른 기기나 다른 사람에게도 보이게 하려면 ‘seed.js 만들기’로 받은 파일을 저장소의 <code>assets/seed.js</code>에 덮어쓰고 올리세요.</p>
+        <ul class="records__list" id="recordList"></ul>
+        <p class="muted">올린 기록은 이 브라우저에만 저장돼요. 모두에게 보이게 하려면 ‘seed.js 만들기’로 받은 파일을 저장소의 <code>assets/seed.js</code>에 덮어쓰세요.</p>
         <div class="records__actions">
-          <button type="button" class="btn btn--ghost" id="exportBtn">내 기록 내보내기 (JSON)</button>
+          <button type="button" class="btn btn--ghost" id="exportBtn">내 기록 내보내기</button>
           <label class="btn btn--ghost">기록 가져오기<input type="file" id="importInput" accept="application/json,.json" hidden></label>
           <button type="button" class="btn btn--ghost" id="seedBtn">seed.js 만들기</button>
         </div>
       </details>
     </section>
 
-    <p class="banner wrap" id="archiveBanner" hidden></p>
-    <section id="glance" class="glance wrap" aria-labelledby="hero-title">
-      <h1 id="hero-title" class="hero__lede"><span id="heroLede"></span></h1>
-      <div class="gcards" id="gcards"></div>
+    <p class="lede" id="lede"></p>
+
+    <section id="s-summary" aria-labelledby="t-summary">
+      <h2 id="t-summary" class="sec">1. 보고서 요약</h2>
+      <div class="grid2" id="summaryCards"></div>
     </section>
 
-    <section id="report" class="section wrap" aria-labelledby="report-title">
-      <h2 id="report-title">보고서 요약</h2>
-      <ul class="report" id="reportList"></ul>
+    <section id="s-semi" class="card" aria-labelledby="t-semi">
+      <h2 id="t-semi" class="card__title">2. 반도체 가격·물량</h2>
+      <p class="card__sub">가격은 메모리 고정가격, 물량은 반도체 생산지수예요. 가격 : 물량은 수출 증가분을 둘로 나눈 비율이에요.</p>
+      <div class="tiles" id="semiTiles"></div>
+      <div id="semiTables"></div>
     </section>
 
-    <section id="guide" class="section wrap" aria-labelledby="guide-title">
-      <h2 id="guide-title">투자자라면 앞으로 이렇게 읽어보세요</h2>
-      <div class="guide" id="guideList"></div>
-      <p class="caption">특정 종목을 사고팔라는 권유가 아니에요. 보도자료 숫자를 어떤 순서로 읽으면 좋은지 정리한 거예요.</p>
+    <section id="s-volprice" class="card" aria-labelledby="t-volprice">
+      <h2 id="t-volprice" class="card__title">3. 수출 물량·가격 추이</h2>
+      <p class="card__sub">물량은 통관 수출물량(톤), 가격은 금액과 물량의 차이로 계산한 추정 단가예요.</p>
+      <div class="tiles" id="vpTiles"></div>
+      <div id="vpTables"></div>
     </section>
 
-    <div class="wrap detail-toggle">
-      <button type="button" class="btn btn--ghost" id="detailBtn" aria-expanded="false" aria-controls="detail">자세한 분석 펼치기</button>
-      <span class="muted">흐름 점검, 분야별 동향, 조업일수, 가격 변화, 지역, 체크리스트, 기록</span>
-    </div>
-
-    <div id="detail" hidden>
-    <nav class="wrap subnav" aria-label="자세한 분석">
-      <a href="#summary">요약</a> <a href="#followup">지난 자료 대비</a> <a href="#flow">흐름 점검</a> <a href="#sectors">분야별</a> <a href="#workdays">조업일수</a> <a href="#prices">가격 변화</a> <a href="#regions">지역</a> <a href="#checklist">다음 체크</a> <a href="#archive">기록</a> <a href="#notes">유의사항</a>
-    </nav>
-    <section class="section wrap" aria-label="수출 구성">
-      <figure class="mix" aria-labelledby="mix-cap">
-        <figcaption id="mix-cap" class="mix__cap"><span id="mixMonth"></span> 20대 품목 수출 구성 <span class="muted">(막대를 누르면 해당 분야로 이동)</span></figcaption>
-        <div class="mix__bar" id="mixBar"></div>
-        <ul class="mix__legend" id="mixLegend"></ul>
-      </figure>
+    <section id="s-items" class="card" aria-labelledby="t-items">
+      <h2 id="t-items" class="card__title">4. 반도체를 뺀 수출과 20대 품목 변화</h2>
+      <div class="tiles" id="itemTiles"></div>
+      <div class="chips" id="itemChips"></div>
+      <div id="itemTable"></div>
     </section>
 
-
-    <!-- 요약 -->
-    <section id="summary" class="section wrap" aria-labelledby="summary-title">
-      <h2 id="summary-title">주요 내용 요약</h2>
-      <div class="summary">
-        <article class="panel">
-          <h3 id="tradeHead"></h3>
-          <dl class="figures" id="tradeFigures"></dl>
-          <div class="chart chart--md"><canvas id="tradeChart" aria-label="월별 수출입과 무역수지 추이"></canvas></div>
-        </article>
-        <article class="panel">
-          <h3 id="industryHead"></h3>
-          <div class="table-scroll">
-            <table class="table" id="industryTable">
-              <thead><tr><th scope="col">지표</th><th scope="col" class="num">전월비</th><th scope="col" class="num">전년동월비</th><th scope="col">요인</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <dl class="minis" id="industryExtra"></dl>
-          <p class="caption" id="industrySummary"></p>
-        </article>
-      </div>
-      <article class="panel takeaways">
-        <h3>두 자료를 함께 읽으면</h3>
-        <ol id="takeaways"></ol>
-      </article>
+    <section id="s-auto" class="card" aria-labelledby="t-auto">
+      <h2 id="t-auto" class="card__title">5. 자동차 차종별</h2>
+      <div class="tiles" id="autoTiles"></div>
+      <p class="note-line" id="autoText"></p>
+      <div id="autoTable"></div>
     </section>
 
-    <!-- 지난 자료 대비 -->
-    <section id="followup" class="section wrap" aria-labelledby="followup-title">
-      <h2 id="followup-title">지난 보도자료 대비 점검</h2>
-      <p class="section__intro" id="followupIntro"></p>
-      <article class="panel">
-        <h3>지난번 확인 항목의 결과</h3>
-        <dl class="st-counts" id="followupCounts"></dl>
-        <ul class="fu-list" id="followupList"></ul>
-      </article>
-      <article class="panel">
-        <h3>흐름 판정은 같은 방향을 유지했나 <span class="muted">수출은 일평균 환산</span></h3>
-        <div class="table-scroll"><table class="table flow-t" id="transitionTable"></table></div>
-        <p class="caption">‘변화’는 판정 단계(엇갈림 → 대체로 같은 방향 → 같은 방향)가 오르면 개선, 내리면 약화입니다. +/− 표시는 새로 생기거나 사라진 표시입니다. 숫자 색은 호조 신호(빨강), 약세 신호(파랑), 보합(회색)이며 재고−출하는 값이 클수록 약세 신호입니다.</p>
-      </article>
-      <article class="panel">
-        <h3>가격·물량 기여는 어떻게 바뀌었나 <span class="muted">전년동월비 금액 증가율을 가격 몫과 물량 몫으로 분해</span></h3>
-        <div id="decompChange"></div>
-      </article>
-      <div class="grid-2">
-        <article class="panel">
-          <h3>가격 지표 변화</h3>
-          <div class="table-scroll"><table class="table" id="priceChange"></table></div>
-        </article>
-        <article class="panel" id="revisionPanel">
-          <h3>지난 수치 수정 <span class="muted">새 보도자료에서 바뀐 값</span></h3>
-          <div class="table-scroll"><table class="table table--dense" id="revisionTable"></table></div>
-        </article>
-      </div>
+    <section id="s-guide" class="card" aria-labelledby="t-guide">
+      <h2 id="t-guide" class="card__title">6. 투자자라면 앞으로 이렇게 읽어보세요</h2>
+      <p class="card__sub" id="guideIntro"></p>
+      <ol class="guide" id="guideList"></ol>
+      <p class="fine">특정 종목을 사고팔라는 권유가 아니에요. 보도자료 숫자를 어떤 순서로 읽으면 좋은지 정리한 거예요.</p>
     </section>
 
-    <!-- 흐름 점검 -->
-    <section id="flow" class="section wrap" aria-labelledby="flow-title">
-      <h2 id="flow-title">분야별 흐름 점검</h2>
-      <p class="section__intro" id="flowIntro"></p>
-      <article class="panel">
-        <div class="table-scroll"><table class="table flow" id="flowTable"></table></div>
-        <p class="caption">빨강 ▲ 호조 신호, 파랑 ▼ 약세 신호, 회색 ■ 보합(±2% 이내). 점선 테두리는 수출과 반대 방향인 신호입니다. 재고 부담은 재고 증가율이 출하 증가율보다 높을수록 약세 신호로 봅니다. 분야 이름을 누르면 자세한 신호를 볼 수 있습니다.</p>
-      </article>
-      <dl class="panel flowsum" id="flowSummary"></dl>
-      <details class="panel method">
-        <summary>판정 방법</summary>
-        <p>분야마다 범주별 대표 신호 하나씩(수출, 가격·단가, 물량·생산, 출하·판매, 재고 부담, 투자·수주)을 골라 부호를 매깁니다. 증감률이 ±2% 이내면 보합으로 보고 판정에서 뺍니다. 수출과 같은 부호인 신호의 비율이 100%면 ‘같은 방향’, 60% 이상이면 ‘대체로 같은 방향’, 그 미만이면 ‘엇갈림’입니다. 비교할 신호가 2개 미만이면 ‘판단 유보’로 둡니다.</p>
-        <p>‘가격 주도’는 단가가 오르는데 물량·생산이 보합이거나 줄어든 경우, ‘재고 부담’은 재고가 출하보다 2%p 넘게 빠르게 늘어난 신호가 하나라도 있는 경우, ‘조업일수 효과’는 원래 수출 증감률과 일평균 환산 증감률의 방향이 다른 경우입니다. 수출 품목 분류와 산업 분류는 범위가 달라 판정은 방향을 가늠하는 참고용입니다.</p>
-      </details>
+    <section id="s-compare" class="card" aria-labelledby="t-compare">
+      <h2 id="t-compare" class="card__title">7. 지난달과 비교</h2>
+      <p class="card__sub" id="compareSub"></p>
+      <div id="compareTable"></div>
+      <div id="revisions"></div>
     </section>
 
-    <!-- 분야별 -->
-    <section id="sectors" class="section wrap" aria-labelledby="sectors-title">
-      <h2 id="sectors-title">분야별 동향</h2>
-      <p class="section__intro" id="sectorsIntro"></p>
-      <div class="sector-tabs" role="tablist" aria-label="분야" id="sectorTabs"></div>
-      <div id="sectorPanel" class="sector" role="tabpanel" tabindex="0"></div>
-    </section>
-
-    <!-- 조업일수 -->
-    <section id="workdays" class="section wrap" aria-labelledby="workdays-title">
-      <h2 id="workdays-title">조업일수 확인</h2>
-      <p class="section__intro" id="workdaysIntro"></p>
-      <dl class="panel compare" id="workdayCompare"></dl>
-      <article class="panel">
-        <h3>월별 조업일수 <span class="muted">수출액 ÷ 일평균 수출액으로 역산</span></h3>
-        <div class="grid-2 wd-grid">
-          <div class="chart chart--md"><canvas id="workdayChart" aria-label="월별 조업일수와 일평균 수출"></canvas></div>
-          <div class="table-scroll"><table class="table table--dense" id="workdayTable"></table></div>
-        </div>
-      </article>
-
-    </section>
-
-    <!-- 가격 -->
-    <section id="prices" class="section wrap" aria-labelledby="prices-title">
-      <h2 id="prices-title">가격 변화 분석</h2>
-      <p class="section__intro" id="pricesIntro"></p>
-      <div class="grid-2">
-        <article class="panel">
-          <h3>전체 수출: 가격 기여와 물량 기여 <span class="muted">전년동월비, %p</span></h3>
-          <div class="chart chart--md"><canvas id="valueVolumeChart"></canvas></div>
-          <p class="caption" id="valueVolumeCaption"></p>
-        </article>
-        <article class="panel">
-          <h3 id="semiGapHead"></h3>
-          <div class="chart chart--md"><canvas id="semiGapChart"></canvas></div>
-          <p class="caption" id="semiGapCaption"></p>
-        </article>
-      </div>
-      <article class="panel">
-        <h3>금액 변화 분해: 가격 몫과 물량 몫</h3>
-        <p class="caption" style="margin:0 0 12px">금액 증가율 = 가격 기여 + 물량 기여. (1+금액) = (1+단가)×(1+물량) 관계를 로그로 나눠 계산하므로 두 기여의 합이 금액 증가율과 정확히 같습니다.</p>
-        <div id="unitTable"></div>
-      </article>
-      <div class="grid-3" id="priceCharts"></div>
-      <article class="panel">
-        <h3>환율과 원화 환산 수출 <span class="muted">원/달러, 조 원</span></h3>
-        <div class="chart chart--sm"><canvas id="fxChart"></canvas></div>
-        <p class="caption" id="fxCaption"></p>
-      </article>
-    </section>
-
-    <!-- 지역 -->
-    <section id="regions" class="section wrap" aria-labelledby="regions-title">
-      <h2 id="regions-title">지역별 수출</h2>
-      <div class="grid-2">
-        <article class="panel">
-          <h3>9대 지역 수출 증감률 <span class="muted">%</span></h3>
-          <div class="chart chart--md"><canvas id="regionChart"></canvas></div>
-        </article>
-        <article class="panel">
-          <h3>수출액과 무역수지 <span class="muted">억 달러</span></h3>
-          <div class="table-scroll"><table class="table" id="regionTable"></table></div>
-        </article>
-      </div>
-    </section>
-
-    <section id="checklist" class="section wrap" aria-labelledby="checklist-title">
-      <h2 id="checklist-title">다음 보도자료에서 확인할 항목</h2>
-      <p class="section__intro" id="checklistIntro"></p>
-      <div class="cl-grid" id="checklistGrid"></div>
-    </section>
-
-    <section id="archive" class="section wrap" aria-labelledby="archive-title">
-      <h2 id="archive-title">보도자료 기록</h2>
-      <p class="section__intro">지금까지 넣은 보도자료입니다. 기준 자료를 누르면 그때의 화면을 그대로 볼 수 있습니다.</p>
-      <article class="panel"><div class="table-scroll"><table class="table" id="archiveTable"></table></div></article>
-    </section>
-
-    <section id="notes" class="section wrap" aria-labelledby="notes-title">
-      <h2 id="notes-title">자료 유의사항</h2>
-      <ul class="notes" id="notesList"></ul>
-    </section>
-    </div>
+    <footer class="foot">
+      <p id="footSrc"></p>
+      <p>숫자는 보도자료 PDF에서 자동으로 읽었고, 문장은 그 숫자로 자동 생성했어요. 중요한 수치는 원문과 대조해 주세요.</p>
+    </footer>
   </main>
 
-  <footer class="footer">
-    <div class="wrap">
-      <p id="footerSources"></p>
-    </div>
-  </footer>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <!-- 저장소에 올린 기본 기록 (사이트의 ‘seed.js 만들기’로 갱신) -->
   <script src="assets/seed.js"></script>
   <script src="assets/parser.js"></script>

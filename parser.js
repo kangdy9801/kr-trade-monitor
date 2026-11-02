@@ -367,6 +367,9 @@
         else if (/국내기계수주/.test(c)) set("기계수주_yoy", vals);
         else if (/건설수주/.test(c)) set("건설수주_yoy", vals);
       }
+      const lv = (re) => { const l = L.find((x) => re.test(compact(x))); if (!l) return null; const v = nums(spaced(l)); return { cur: v[v.length - 1], prev: v[v.length - 2] }; };
+      r.main["동행순환_level"] = lv(/^동행지수순환변동치/);
+      r.main["선행순환_level"] = lv(/^선행지수순환변동치/);
       const ci = L.filter((l) => /^․?전월차\(p\)/.test(compact(l)));
       if (ci[0]) { const v = nums(spaced(ci[0])); r.main["동행순환_diff"] = { cur: v[v.length - 1], prev: v[v.length - 2] }; }
       if (ci[1]) { const v = nums(spaced(ci[1])); r.main["선행순환_diff"] = { cur: v[v.length - 1], prev: v[v.length - 2] }; }
@@ -374,6 +377,13 @@
       const hdr = L.map(compact).find((c) => /연간/.test(c));
       if (hdr && !new RegExp(`${r.month}월$`).test(hdr)) warn.push("주요지표 표의 마지막 열이 당월이 아닐 수 있습니다.");
     } else warn.push("산업활동 주요지표 표를 찾지 못했습니다.");
+
+    // 국내기계수주 공공·민간 (요약 쪽 문장)
+    {
+      const flatAll = all.slice(0, 12).join("").replace(/\n/g, "");
+      const mo = flatAll.match(/국내기계수주\)공공\(([+\-]?[\d.]+)%\).{0,40}?민간\(([+\-]?[\d.]+)%/);
+      if (mo) r.machOrders = { public: num(mo[1]), private: num(mo[2]) };
+    }
 
     // 업종별 생산·출하·재고
     const pInd = findPage(pages, /업종별생산·출하·재고\(/, 5);
@@ -389,7 +399,7 @@
         const nameToks = toks.filter((_, i) => !tail.includes(i));
         const name = nameToks.join("").replace(/[․·]/g, "·").replace(/\s+/g, "").replace(/^총지수$/, "광공업");
         const v = tail.map((i) => toks[i] === "-" ? null : Number(toks[i]));
-        r.industryRows[name] = { prod: [v[1], v[2]], ship: [v[4], v[5]], inv: [v[7], v[8]] };
+        r.industryRows[name] = { w: v[0], prod: [v[1], v[2]], ship: [v[4], v[5]], inv: [v[7], v[8]] };
       }
       if (!r.industryRows["반도체"]) warn.push("업종별 표에서 반도체 행을 찾지 못했습니다.");
     } else warn.push("업종별 생산·출하·재고 표를 찾지 못했습니다.");
