@@ -335,3 +335,34 @@ td .badge { display: block; width: max-content; margin-bottom: 2px; }
 }
 .flow-t td.num { font-size: .84rem; white-space: nowrap; }
 .flow-t th[scope="row"] { white-space: nowrap; }
+
+/* ---------- 업로드 ---------- */
+.upload { padding-top: 28px; }
+.upload__zone { background: var(--surface); border: 2px dashed var(--rule); border-radius: 8px; padding: 22px; display: grid; gap: 14px; transition: border-color .15s, background .15s; }
+.upload__zone.is-over { border-color: var(--down); background: color-mix(in srgb, var(--down) 6%, var(--surface)); }
+.upload__title { font: 700 1.25rem/1.3 var(--serif); margin: 0 0 6px; padding: 0; border: 0; }
+.upload__text p { margin: 0; color: var(--muted); max-width: 56em; }
+.upload__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { font: 700 .92rem var(--sans); background: var(--ink); color: var(--surface); border: 1px solid var(--ink); border-radius: 6px; padding: 9px 16px; cursor: pointer; display: inline-block; }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+.btn--ghost { background: var(--surface); color: var(--ink); border-color: var(--rule); }
+.btn--ghost:hover { border-color: var(--ink); }
+.up-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.up-files:empty { display: none; }
+.up-files li { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; font-size: .9rem; padding: 6px 10px; background: var(--paper); border-radius: 4px; }
+.up-file__name { font-weight: 600; word-break: break-all; }
+.up-file__state { color: var(--muted); }
+.up-status { margin: 0; font-size: .9rem; }
+.up-status:empty { display: none; }
+.up-status.ok { color: #2f7d4f; }
+.up-status.warn { color: var(--mark); }
+.records { margin-top: 10px; font-size: .9rem; }
+.records summary { cursor: pointer; font-weight: 600; }
+.records p { color: var(--muted); max-width: 60em; }
+.records__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.linkish.small { font-size: .78rem; font-weight: 500; }
+.src { font-size: .72rem; color: var(--muted); }
+.src--local { color: var(--down); }
+.wd-grid { margin: 0; }
+code { font-size: .88em; background: var(--paper); padding: 1px 5px; border-radius: 3px; }
+.sector__lead { white-space: pre-line; font-size: 1.05rem; }

@@ -1,17 +1,31 @@
 (function () {
   "use strict";
-  /* ---------- 기간 선택 ----------
-   * periods/*.js 파일이 window.PERIODS["YYYY-MM"]에 기간별 데이터를 등록합니다.
-   * ?p=YYYY-MM 로 기간을 고르고, 없으면 가장 최근 기간을 보여줍니다.
+  /* ---------- 기록 불러오기 ----------
+   * 기록 = 한 달 치 보도자료 두 개(수출입 동향 + 산업활동동향)를 파서로 읽은 원본 숫자.
+   * assets/seed.js(저장소에 올린 기본 기록)와 브라우저 저장소(내가 올린 기록)를 합칩니다.
+   * 화면에 쓰는 값은 모두 KTMAnalyze.analyze()가 원본 숫자에서 다시 계산합니다.
    */
-  const PERIODS = window.PERIODS || {};
-  const KEYS = Object.keys(PERIODS).sort();
+  const A = window.KTMAnalyze;
+  const LS_KEY = "ktm.records.v1";
+  const loadLocal = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch (e) { return []; } };
+  const saveLocal = (list) => { try { localStorage.setItem(LS_KEY, JSON.stringify(list)); return true; } catch (e) { return false; } };
+  const RECORDS = {};
+  (window.KTM_SEED || []).forEach((r) => { RECORDS[r.id] = Object.assign({}, r, { source: "seed" }); });
+  loadLocal().forEach((r) => { RECORDS[r.id] = Object.assign({}, r, { source: "local" }); });
+  const ALL_KEYS = Object.keys(RECORDS).sort();
+  const PERIODS = {}, ANALYZE_ERRORS = {};
+  ALL_KEYS.forEach((k, i) => {
+    const pk = ALL_KEYS.slice(0, i).reverse().find((x) => PERIODS[x]);
+    try { PERIODS[k] = A.analyze(RECORDS[k], pk ? RECORDS[pk] : null, pk ? PERIODS[pk] : null); PERIODS[k].source = RECORDS[k].source; }
+    catch (e) { ANALYZE_ERRORS[k] = e.message; console.error(e); }
+  });
+  const KEYS = ALL_KEYS.filter((k) => PERIODS[k]);
   const qp = new URLSearchParams(location.search).get("p");
   const KEY = KEYS.includes(qp) ? qp : KEYS[KEYS.length - 1];
-  const R = PERIODS[KEY];
-  const PREV = KEYS.indexOf(KEY) > 0 ? PERIODS[KEYS[KEYS.indexOf(KEY) - 1]] : null;
-  const NEXT = KEYS.indexOf(KEY) < KEYS.length - 1 ? PERIODS[KEYS[KEYS.indexOf(KEY) + 1]] : null;
-  const L = R.labels;
+  const R = KEY ? PERIODS[KEY] : null;
+  const PREV = R && KEYS.indexOf(KEY) > 0 ? PERIODS[KEYS[KEYS.indexOf(KEY) - 1]] : null;
+  const NEXT = R && KEYS.indexOf(KEY) < KEYS.length - 1 ? PERIODS[KEYS[KEYS.indexOf(KEY) + 1]] : null;
+  const L = R ? R.labels : {};
   const periodUrl = (k) => `?p=${k}`;
   const $ = (sel, root = document) => root.querySelector(sel);
   const charts = {};
@@ -129,6 +143,7 @@
 
     $("#industryTable tbody").innerHTML = R.industry.headline.map((r) =>
       `<tr><th scope="row">${r.name}</th><td class="num">${pct(r.mom)}</td><td class="num">${pct(r.yoy)}</td><td class="note">${esc(r.note)}</td></tr>`).join("");
+    $("#industrySummary").innerHTML = (R.industry.summary || []).length ? `<b>보도자료 요약</b> ${R.industry.summary.map(esc).join(" ")}` : "";
     $("#industryExtra").innerHTML = R.industry.extra.map((r) => `<div><dt>${r.name}</dt><dd>${r.value}<small>${r.change}</small></dd></div>`).join("");
 
     const items = R.takeaways;
@@ -148,7 +163,7 @@
   }
 
   /* ---------- 분야별 ---------- */
-  let currentSector = R.sectors[0].id;
+  let currentSector = R ? R.sectors[0].id : null;
   function renderSectorTabs() {
     const box = $("#sectorTabs");
     box.innerHTML = R.sectors.map((s) => {
@@ -290,22 +305,7 @@
 
   /* ---------- 가격·물량 분해 ---------- */
   // (1+금액) = (1+가격)(1+물량). 로그로 나눠 금액 증가율을 가격 기여(%p)와 물량 기여(%p)로 분해합니다.
-  function decompose(r) {
-    let v = r.value, p = r.price, q = r.volume, filled = null;
-    if (p == null && q != null) { p = ((1 + v / 100) / (1 + q / 100) - 1) * 100; filled = "price"; }
-    if (q == null && p != null) { q = ((1 + v / 100) / (1 + p / 100) - 1) * 100; filled = "volume"; }
-    const lv = Math.log(1 + v / 100), lp = Math.log(1 + p / 100), lq = Math.log(1 + q / 100);
-    let cp, cq;
-    if (Math.abs(lv) < 1e-6) { cp = lp * 100; cq = lq * 100; } else { cp = v * lp / lv; cq = v * lq / lv; }
-    return { v, p, q, cp, cq, filled };
-  }
-  function decompReading(d) {
-    const { v, cp, cq } = d;
-    if (cp >= 0 && cq >= 0) return `금액 증가의 ${fmt(cp / v * 100, 0)}%가 가격, ${fmt(cq / v * 100, 0)}%가 물량`;
-    if (cp > 0 && cq < 0) return v >= 0 ? `물량 감소(${signed(cq)}%p)를 가격(${signed(cp)}%p)이 메우고 남아 금액 증가` : `가격 상승(${signed(cp)}%p)보다 물량 감소(${signed(cq)}%p)가 커 금액 감소`;
-    if (cp < 0 && cq > 0) return v >= 0 ? `단가 하락(${signed(cp)}%p)을 물량 증가(${signed(cq)}%p)가 메움` : `물량은 늘었지만 단가 하락이 더 커 금액 감소`;
-    return "가격과 물량이 모두 감소";
-  }
+  const decompose = A.decompose, decompReading = A.decompReading;
   // 막대 축척: 가장 큰 값 기준, 단 100%p를 넘으면 100%p에서 자르고 표시
   function barScale(ds) {
     const m = Math.max(...ds.map((d) => Math.max(Math.max(d.cp, 0) + Math.max(d.cq, 0), Math.max(-d.cp, 0) + Math.max(-d.cq, 0), Math.abs(d.v))), 1);
@@ -352,46 +352,9 @@
   }
 
   /* ---------- 흐름 점검 ---------- */
-  // 조업일수 환산: 전년 동월 조업일 ÷ 올해 조업일
-  const wdFactor = (X) => X.workdays.prev / X.workdays.curr;
-  const CATS = [
-    ["export", "수출", "일평균 환산"], ["price", "가격·단가", ""], ["volume", "물량·생산", ""],
-    ["ship", "출하·판매", ""], ["stock", "재고 부담", "재고−출하"], ["invest", "투자·수주", ""]
-  ];
-  const adjExport = (v, X = R) => ((1 + v / 100) * wdFactor(X) - 1) * 100;
-  function tone(cat, v) {
-    if (v == null) return null;
-    const x = cat === "stock" ? -v : v;
-    return Math.abs(x) < 2 ? 0 : x > 0 ? 1 : -1;
-  }
-  function judge(id, X = R) {
-    const A = X.alignment && X.alignment[id];
-    if (!A) return null;
-    const first = {};
-    A.signals.forEach((s) => { if (!s.ref && !first[s.cat]) first[s.cat] = s; });
-    const cells = {};
-    CATS.forEach(([c]) => {
-      const s = first[c];
-      if (!s) return;
-      const val = c === "export" ? adjExport(s.value, X) : s.value;
-      cells[c] = { s, val, t: tone(c, val) };
-    });
-    const e = cells.export ? cells.export.t : 0;
-    const others = CATS.map(([c]) => c).filter((c) => c !== "export" && cells[c] && cells[c].t !== 0);
-    const agree = others.filter((c) => cells[c].t === e).length;
-    let kind, status;
-    if (A.statusOverride) { kind = "diverge"; status = A.statusOverride; }
-    else if (!e || others.length < 2) { kind = "hold"; status = "판단 유보"; }
-    else if (agree === others.length) { kind = "same"; status = "같은 방향"; }
-    else if (agree / others.length >= 0.6) { kind = "mostly"; status = "대체로 같은 방향"; }
-    else { kind = "diverge"; status = "엇갈림"; }
-    const flags = [];
-    if (cells.price && cells.volume && cells.price.t > 0 && cells.volume.t <= 0) flags.push("가격 주도");
-    if (A.signals.some((s) => s.cat === "stock" && !s.ref && tone("stock", s.value) < 0)) flags.push("재고 부담");
-    if (cells.export && tone("export", cells.export.s.value) !== cells.export.t) flags.push("조업일수 효과");
-    if (X.alignment[id].note) flags.push(X.alignment[id].note);
-    return { kind, status, flags, cells, e, agree, n: others.length, A };
-  }
+  const CATS = A.CATS, tone = A.tone, KIND_RANK = A.KIND_RANK;
+  const adjExport = (v, X = R) => A.adjExport(v, X);
+  const judge = (id, X = R) => A.judge(X, id);
   function cellText(c, x) {
     if (c === "stock") return x.val > 0 ? `재고가 ${fmt(x.val)}%p 빠름` : x.val < 0 ? `출하가 ${fmt(-x.val)}%p 빠름` : "같은 속도";
     return `${signed(x.val)}%`;
@@ -451,53 +414,16 @@
   }
 
   /* ---------- 조업일수 ---------- */
-  function workdayCount(y, m) {
-    const hol = R.holidays[`${y}-${String(m).padStart(2, "0")}`] || [];
-    const last = new Date(y, m, 0).getDate();
-    let total = 0;
-    const days = [];
-    for (let d = 1; d <= last; d++) {
-      const dow = new Date(y, m - 1, d).getDay();
-      const isHol = hol.includes(d);
-      let w = dow === 0 ? 0 : dow === 6 ? 0.5 : 1;
-      if (isHol) w = 0;
-      total += w;
-      days.push({ d, dow, w, isHol });
-    }
-    return { total, days };
-  }
-  function calendarHtml(y, m) {
-    const { total, days } = workdayCount(y, m);
-    const first = days[0].dow;
-    const dows = ["일", "월", "화", "수", "목", "금", "토"];
-    let cells = dows.map((d) => `<div class="cal__dow">${d}</div>`).join("");
-    for (let i = 0; i < first; i++) cells += `<div class="cal__d pad"></div>`;
-    days.forEach((x) => {
-      const key = `${y}-${String(m).padStart(2, "0")}-${String(x.d).padStart(2, "0")}`;
-      const name = R.holidayNames[key];
-      let c = "off";
-      if (x.isHol) c = "hol"; else if (x.w === 1) c = "full"; else if (x.w === 0.5) c = "half";
-      const label = `${m}월 ${x.d}일 ${dows[x.dow]}요일${name ? ", " + name : ""}, 조업일 ${x.w}`;
-      cells += `<div class="cal__d ${c}" title="${label}" aria-label="${label}"><span>${x.d}</span></div>`;
-    });
-    return `<div class="cal"><h4><span>${y}년 ${m}월</span><b>${fmt(total)}일</b></h4><div class="cal__grid" role="img" aria-label="${y}년 ${m}월 조업일수 ${total}일">${cells}</div></div>`;
-  }
   function renderWorkdays() {
-    const W = R.workdays, y = W.year, m = W.month, im = m - 1;
-    const box = $("#calendars");
-    box.innerHTML = calendarHtml(y - 1, m) + calendarHtml(y, m) + calendarHtml(y - 1, im) + calendarHtml(y, im) +
-      `<div class="cal__legend" style="grid-column:1/-1"><span><i style="background:var(--ink)"></i>평일 1일</span><span><i style="background:var(--rule)"></i>토요일 0.5일</span><span><i style="background:var(--mark-bg);outline:1px solid var(--mark)"></i>공휴일 0일</span><span><i style="background:transparent;outline:1px solid var(--rule)"></i>일요일 0일</span><span>위 두 달력은 수출 기준월(${m}월), 아래 두 달력은 산업활동 기준월(${im}월)</span></div>`;
-
-    const t = R.trade;
+    const W = R.workdays, t = R.trade, m = W.month;
     const days = t.exportMonthly.map((v, i) => v / t.exportDaily[i]);
-    const impDays = t.importMonthly.map((v, i) => v / t.importDaily[i]);
-    const round = (x) => Math.round(x * 2) / 2;
+    const impDays = t.importMonthly.map((v, i) => t.importDaily && t.importDaily[i] ? v / t.importDaily[i] : null);
+    const round = (x) => x == null ? null : Math.round(x * 2) / 2;
     const rowsHtml = R.months.map((mo, i) => `<tr class="${i === 12 || i === 0 ? "is-hl" : ""}"><th scope="row">${mo}</th><td class="num">${fmt(t.exportMonthly[i])}</td><td class="num">${fmt(t.exportDaily[i])}</td><td class="num"><b>${fmt(round(days[i]))}</b></td><td class="num">${fmt(round(impDays[i]))}</td></tr>`).join("");
     $("#workdayTable").innerHTML = `<thead><tr><th scope="col">월</th><th scope="col" class="num">수출(억$)</th><th scope="col" class="num">일평균</th><th scope="col" class="num">조업일수</th><th scope="col" class="num">수입 기준</th></tr></thead><tbody>${rowsHtml}</tbody>`;
-
     makeChart("workdayChart", {
       data: { labels: R.months, datasets: [
-        { type: "bar", label: "조업일수(일)", data: days.map(round), backgroundColor: days.map((_, i) => i === 12 ? css("--mark") : css("--rule")), yAxisID: "y", borderRadius: 2 },
+        { type: "bar", label: "조업일수(일)", data: days.map(round), backgroundColor: days.map((_, i) => i === 12 || i === 0 ? css("--mark") : css("--rule")), yAxisID: "y", borderRadius: 2 },
         { type: "line", label: "일평균 수출(억$)", data: t.exportDaily, borderColor: css("--up"), backgroundColor: css("--up"), yAxisID: "y1", pointRadius: 2, tension: 0 }
       ] },
       options: baseOptions({ scales: {
@@ -506,17 +432,15 @@
         y1: { position: "right", grid: { display: false }, ticks: { color: css("--muted"), font: { size: 10 } } }
       } })
     });
-
-    const ip = workdayCount(y - 1, im).total, ic = workdayCount(y, im).total;
-    const prevDaily = W.industryPrevYearExport / ip;
-    const indDailyYoy = (t.exportDaily[11] / prevDaily - 1) * 100;
-    const fs = R.sectors.find((s) => s.id === W.featureSector);
-    const fe = fs.exports[0];
+    // 조업일수 효과가 가장 큰 분야
+    const cands = R.sectors.map((s) => s.exports[0]).filter(Boolean).map((e) => ({ e, adj: adjExport(e.yoy) }));
+    const fe = (cands.find((c) => Math.sign(c.adj) !== Math.sign(c.e.yoy)) || cands.find((c) => c.e.name === "자동차") || cands[0]);
+    const im = R.labels.industryMonth;
     $("#workdayCompare").innerHTML = `
-      <div><dt>${m}월 조업일수</dt><dd>${fmt(W.prev)} → ${fmt(W.curr)}일<small>${signed(W.curr - W.prev)}일, ${esc(W.reason)}</small></dd></div>
-      <div><dt>${m}월 수출: 총액 vs 일평균</dt><dd>${pct(t.export.yoy)} / ${pct(t.export.dailyYoy)}<small>${W.curr < W.prev ? "조업일 감소분을 빼면 증가 폭이 더 큽니다" : "조업일 증가분을 빼면 증가 폭이 더 작습니다"}</small></dd></div>
-      <div><dt>${m}월 ${esc(fe.name)}: 총액 vs 일평균</dt><dd>${pct(fe.yoy)} / ${pct(adjExport(fe.yoy))}<small>조업일수 환산</small></dd></div>
-      <div><dt>${im}월 조업일수 (산업활동 기준월)</dt><dd>${fmt(ip)} → ${fmt(ic)}일<small>일평균 수출 ${fmt(prevDaily)} → ${fmt(t.exportDaily[11])}억 달러(${signed(indDailyYoy)}%, 추정)</small></dd></div>`;
+      <div><dt>${m}월 조업일수</dt><dd>${fmt(W.prev)} → ${fmt(W.curr)}일<small>${W.curr === W.prev ? "차이 없음" : `${signed(W.curr - W.prev)}일 (수출액 ÷ 일평균으로 역산)`}</small></dd></div>
+      <div><dt>${m}월 수출: 총액 vs 일평균</dt><dd>${pct(t.export.yoy)} / ${pct(t.export.dailyYoy)}<small>${W.curr < W.prev ? "조업일 감소분을 빼면 증가 폭이 더 큽니다" : W.curr > W.prev ? "조업일 증가분을 빼면 증가 폭이 더 작습니다" : "조업일수 영향 없음"}</small></dd></div>
+      ${fe ? `<div><dt>${m}월 ${esc(fe.e.name)}: 총액 vs 일평균</dt><dd>${pct(fe.e.yoy)} / ${pct(fe.adj)}<small>조업일수 환산</small></dd></div>` : ""}
+      <div><dt>${im} 조업일수 (산업활동 기준월)</dt><dd>${fmt(round(days[11]))}일<small>${im}의 전년비 산업 지표도 이 조업일수 영향을 받습니다</small></dd></div>`;
   }
 
   /* ---------- 가격 ---------- */
@@ -556,7 +480,7 @@
 
     $("#unitTable").innerHTML = decompTable(R.decomposition);
 
-    const order = [["memory", "메모리 고정가격", "달러"], ["ddr4"], ["dubai"], ["products"], ["lithium"], ["nickel"]];
+    const order = [["memory", "메모리 고정가격", "달러"], ["ddr4"], ["dubai"], ["products"], ["lithium"], ["nickel"]].filter(([k]) => k === "memory" ? R.prices.ddr5 && R.prices.nand : R.prices[k]);
     const grid = $("#priceCharts");
     grid.innerHTML = order.map(([k, title, unit]) => {
       const p = R.prices[k];
@@ -565,8 +489,8 @@
       const note = k === "memory" ? `DDR5 16Gb ${fmt(d5.values[0])} → ${fmt(d5.values[d5.values.length - 1])}, NAND 128Gb ${fmt(nd.values[0])} → ${fmt(nd.values[nd.values.length - 1])} (${d5.labels[0]}~${d5.labels[d5.labels.length - 1]}월)` : p.note || "";
       return `<article class="panel"><h3>${t2} <span class="muted">${u}</span></h3><div class="chart chart--sm"><canvas id="pc-${k}"></canvas></div>${note ? `<p class="caption">${note}</p>` : ""}</article>`;
     }).join("");
-    priceChart("pc-memory", { labels: R.prices.ddr5.labels, unit: "달러", multi: [{ name: "DDR5 16Gb", values: R.prices.ddr5.values }, { name: "NAND 128Gb", values: R.prices.nand.values }] });
-    ["ddr4", "dubai", "products", "lithium", "nickel"].forEach((k) => priceChart(`pc-${k}`, R.prices[k], css("--ink")));
+    if (R.prices.ddr5 && R.prices.nand) priceChart("pc-memory", { labels: R.prices.ddr5.labels, unit: "달러", multi: [{ name: "DDR5 16Gb", values: R.prices.ddr5.values }, { name: "NAND 128Gb", values: R.prices.nand.values }] });
+    ["ddr4", "dubai", "products", "lithium", "nickel"].filter((k) => R.prices[k]).forEach((k) => priceChart(`pc-${k}`, R.prices[k], css("--ink")));
 
     makeChart("fxChart", {
       data: { labels: R.months, datasets: [
@@ -597,8 +521,7 @@
 
 
   /* ---------- 지난 보도자료 대비 점검 ---------- */
-  const STATUS = { "해소": "ok", "부분": "part", "지속": "same", "악화": "bad" };
-  const KIND_RANK = { diverge: 0, hold: 1, mostly: 2, same: 3 };
+  const STATUS = { "해소": "ok", "부분": "part", "지속": "same", "악화": "bad", "확인 불가": "same" };
   const toneCls = (t) => t > 0 ? "up" : t < 0 ? "down" : "flat";
   function valTxt(c, x) {
     return c === "stock" ? `<span class="${toneCls(x.t)}">${signed(x.val)}%p</span>` : `<span class="${toneCls(x.t)}">${signed(x.val)}%</span>`;
@@ -744,7 +667,7 @@
       const nSame = js.filter((j) => j.kind === "same" || j.kind === "mostly").length;
       const nDiv = js.filter((j) => j.kind === "diverge").length;
       return `<tr class="${k === KEY ? "is-hl" : ""}">
-        <th scope="row"><a href="${periodUrl(k)}">${esc(X.label)}</a>${k === KEY ? ' <span class="muted">보는 중</span>' : ""}</th>
+        <th scope="row"><a href="${periodUrl(k)}">${esc(X.label)}</a>${k === KEY ? ' <span class="muted">보는 중</span>' : ""}<br><span class="src src--${X.source}">${X.source === "local" ? "내 업로드" : "기본 기록"}</span>${X.source === "local" ? ` <button type="button" class="linkish small" data-del="${k}">삭제</button>` : ""}</th>
         <td class="num">${fmt(t.export.value)}<br>${pct(t.export.yoy)}</td>
         <td class="num">${fmt(t.export.daily)}<br>${pct(t.export.dailyYoy)}</td>
         <td class="num">${fmt(X.workdays.prev)} → ${fmt(X.workdays.curr)}</td>
@@ -756,7 +679,9 @@
         <td class="num">${nSame} / ${nDiv}</td>
       </tr>`;
     }).join("");
-    $("#archiveTable").innerHTML = `<thead><tr><th scope="col">기준 자료</th><th scope="col" class="num">수출(억$)</th><th scope="col" class="num">일평균</th><th scope="col" class="num">조업일수</th><th scope="col" class="num">수출 물량</th><th scope="col" class="num">반도체</th><th scope="col" class="num">무역수지</th><th scope="col" class="num">광공업생산<br><span class="muted">전월비 / 전년비</span></th><th scope="col" class="num">제조업 가동률</th><th scope="col" class="num">같은 방향 / 엇갈림<br><span class="muted">분야 수</span></th></tr></thead><tbody>${rows}</tbody>`;
+    const errs = Object.entries(ANALYZE_ERRORS).map(([k, e]) => `<tr><th scope="row">${esc(k)}</th><td colspan="9" class="note">분석하지 못했습니다: ${esc(e)}</td></tr>`).join("");
+    $("#archiveTable").innerHTML = `<thead><tr><th scope="col">기준 자료</th><th scope="col" class="num">수출(억$)</th><th scope="col" class="num">일평균</th><th scope="col" class="num">조업일수</th><th scope="col" class="num">수출 물량</th><th scope="col" class="num">반도체</th><th scope="col" class="num">무역수지</th><th scope="col" class="num">광공업생산<br><span class="muted">전월비 / 전년비</span></th><th scope="col" class="num">제조업 가동률</th><th scope="col" class="num">같은 방향 / 엇갈림<br><span class="muted">분야 수</span></th></tr></thead><tbody>${rows}${errs}</tbody>`;
+    $("#archiveTable").querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => deleteRecord(b.dataset.del)));
   }
 
   function renderNotes() { $("#notesList").innerHTML = R.notes.map((n) => `<li>${esc(n)}</li>`).join(""); }
@@ -788,7 +713,113 @@
     renderRegions();
   }
 
+  /* ---------- PDF 업로드 ---------- */
+  const PDFJS_VER = "3.11.174";
+  const PDFJS_URL = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VER}/pdf.min.js`;
+  const PDFJS_WORKER = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VER}/pdf.worker.min.js`;
+  let pending = [];
+  function loadPdfJs() {
+    return new Promise((resolve, reject) => {
+      if (window.pdfjsLib) { if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) window.pdfjsLib.GlobalWorkerOptions.workerSrc = window.KTM_PDF_WORKER || PDFJS_WORKER; return resolve(window.pdfjsLib); }
+      const sc = document.createElement("script");
+      sc.src = window.KTM_PDFJS || PDFJS_URL;
+      sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = window.KTM_PDF_WORKER || PDFJS_WORKER; resolve(window.pdfjsLib); };
+      sc.onerror = () => reject(new Error("PDF 해석 도구(pdf.js)를 불러오지 못했습니다. 인터넷 연결을 확인하세요."));
+      document.head.appendChild(sc);
+    });
+  }
+  const status = (msg, kind = "") => { const el = $("#uploadStatus"); el.className = `up-status ${kind}`; el.innerHTML = msg; };
+  function renderFileList() {
+    $("#fileList").innerHTML = pending.map((f, i) => `<li><span class="up-file__name">${esc(f.file.name)}</span><span class="up-file__state ${f.error ? "down" : ""}">${f.error ? esc(f.error) : f.parsed ? `${f.parsed.type === "trade" ? "수출입 동향" : "산업활동동향"} · ${f.parsed.year}년 ${f.parsed.month}월` : "읽는 중…"}</span><button type="button" class="linkish small" data-rm="${i}">빼기</button></li>`).join("");
+    $("#fileList").querySelectorAll("[data-rm]").forEach((b) => b.addEventListener("click", () => { pending.splice(+b.dataset.rm, 1); renderFileList(); checkReady(); }));
+  }
+  function checkReady() {
+    const t = pending.filter((f) => f.parsed && f.parsed.type === "trade"), ind = pending.filter((f) => f.parsed && f.parsed.type === "industry");
+    const ok = t.length === 1 && ind.length === 1;
+    $("#analyzeBtn").disabled = !ok;
+    if (pending.some((f) => !f.parsed && !f.error)) return;
+    if (!pending.length) status("");
+    else if (t.length > 1 || ind.length > 1) status("같은 종류의 보도자료가 두 개 있습니다. 하나씩만 남겨 주세요.", "warn");
+    else if (!ok) status(`${t.length ? "" : "「수출입 동향」 "}${ind.length ? "" : "「산업활동동향」 "}PDF를 더 올려 주세요.`, "warn");
+    else {
+      const tm = t[0].parsed, im = ind[0].parsed;
+      const expect = tm.month === 1 ? 12 : tm.month - 1;
+      const id = `${tm.year}-${String(tm.month).padStart(2, "0")}`;
+      const warns = [].concat(tm.warnings || [], im.warnings || []);
+      status(`${tm.month}월 수출입 동향 + ${im.month}월 산업활동동향 준비 완료.${im.month !== expect ? ` <b>주의:</b> 보통은 ${tm.month}월 수출입과 ${expect}월 산업활동을 함께 봅니다.` : ""}${RECORDS[id] ? ` 같은 달(${id}) 기록이 이미 있어 새로 덮어씁니다.` : ""}${warns.length ? `<br>읽기 경고 ${warns.length}건: ${warns.map(esc).join(" / ")}` : ""}`, im.month !== expect || warns.length ? "warn" : "ok");
+    }
+  }
+  async function addFiles(files) {
+    const list = [...files].filter((f) => /pdf$/i.test(f.name) || f.type === "application/pdf");
+    if (!list.length) { status("PDF 파일만 올릴 수 있습니다.", "warn"); return; }
+    const entries = list.map((file) => ({ file, parsed: null, error: null }));
+    pending = pending.concat(entries);
+    renderFileList();
+    status("PDF를 읽고 있습니다. 산업활동동향은 쪽수가 많아 10초 정도 걸릴 수 있습니다…");
+    let pdfjs;
+    try { pdfjs = await loadPdfJs(); } catch (e) { status(esc(e.message), "warn"); return; }
+    for (const en of entries) {
+      try { en.parsed = await KTMParser.parsePdf(pdfjs, new Uint8Array(await en.file.arrayBuffer())); }
+      catch (e) { en.error = e.message || "읽지 못했습니다"; }
+      renderFileList();
+    }
+    checkReady();
+  }
+  function analyzeAndSave() {
+    const t = pending.find((f) => f.parsed && f.parsed.type === "trade").parsed;
+    const ind = pending.find((f) => f.parsed && f.parsed.type === "industry").parsed;
+    const id = `${t.year}-${String(t.month).padStart(2, "0")}`;
+    const rec = { id, trade: t, industry: ind, files: pending.map((f) => f.file.name), savedAt: new Date().toISOString() };
+    try { A.analyze(rec, null, null); } catch (e) { status(`분석 중 오류가 났습니다: ${esc(e.message)}. 보도자료 형식이 달라졌을 수 있습니다.`, "warn"); return; }
+    const local = loadLocal().filter((r) => r.id !== id);
+    local.push(rec);
+    if (!saveLocal(local)) { status("브라우저 저장 공간이 부족해 기록을 저장하지 못했습니다. ‘기록 관리’에서 내보내기 후 오래된 기록을 지워 주세요.", "warn"); return; }
+    location.href = `${periodUrl(id)}#summary`;
+  }
+  function deleteRecord(id) {
+    if (!confirm(`${id} 기록을 이 브라우저에서 지울까요?`)) return;
+    saveLocal(loadLocal().filter((r) => r.id !== id));
+    location.href = location.pathname;
+  }
+  function download(name, text, type = "application/json") {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  function stripRecord(r) { const { source, ...rest } = r; return rest; }
+  function initUpload() {
+    const zone = $("#dropZone"), input = $("#fileInput");
+    input.addEventListener("change", () => { addFiles(input.files); input.value = ""; });
+    ["dragenter", "dragover"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add("is-over"); }));
+    ["dragleave", "drop"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.remove("is-over"); }));
+    zone.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+    $("#analyzeBtn").addEventListener("click", analyzeAndSave);
+    $("#exportBtn").addEventListener("click", () => download(`ktm-records-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(loadLocal(), null, 1)));
+    $("#importInput").addEventListener("change", async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      try {
+        const arr = JSON.parse(await f.text());
+        if (!Array.isArray(arr) || !arr.every((r) => r.id && r.trade && r.industry)) throw new Error("기록 파일 형식이 아닙니다.");
+        const map = Object.fromEntries(loadLocal().map((r) => [r.id, r])); arr.forEach((r) => { map[r.id] = r; });
+        saveLocal(Object.values(map)); location.reload();
+      } catch (err) { alert(`가져오지 못했습니다: ${err.message}`); }
+    });
+    $("#seedBtn").addEventListener("click", () => {
+      const all = ALL_KEYS.map((k) => stripRecord(RECORDS[k]));
+      download("seed.js", `/* 저장소에 올리는 기본 기록. 사이트의 ‘기록 관리 → seed.js 만들기’로 생성했습니다. */\nwindow.KTM_SEED = ${JSON.stringify(all)};\n`, "text/javascript");
+    });
+    const nLocal = loadLocal().length;
+    $("#recordInfo").textContent = `기본 기록 ${(window.KTM_SEED || []).length}개, 이 브라우저에 저장한 기록 ${nLocal}개`;
+  }
+
   // 시작
+  initUpload();
+  if (!R) {
+    document.querySelectorAll("main > section:not(#upload), .nav").forEach((el) => { el.hidden = true; });
+    status("아직 기록이 없습니다. 보도자료 PDF 2개를 올리면 분석이 시작됩니다.");
+    return;
+  }
   const hash = location.hash.replace("#", "");
   if (R.sectors.some((s) => s.id === hash)) currentSector = hash;
   renderMeta();
