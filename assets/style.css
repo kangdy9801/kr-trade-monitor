@@ -141,3 +141,30 @@ code { background: var(--head); padding: 1px 5px; border-radius: 4px; font-size:
   .tile__value { font-size: 1.35rem; }
 }
 .tbl-wrap + .tbl-wrap { margin-top: 18px; }
+
+/* 분야별 흐름 */
+.tbl--flow td, .tbl--flow th { vertical-align: middle; }
+.cell { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.25; padding: 2px 6px; border-radius: 6px; }
+.cell small { font-size: .7rem; color: var(--muted); font-weight: 400; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
+.cell.is-opp { outline: 1.5px dashed currentColor; outline-offset: 1px; }
+.sname { font-weight: 700; text-decoration: none; }
+.sname:hover { text-decoration: underline; }
+.flag { display: inline-block; margin-left: 4px; font-size: .72rem; color: var(--amber); border: 1px solid currentColor; border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+.acc { display: grid; gap: 8px; }
+.acc__item { border: 1px solid var(--line); border-radius: 10px; }
+.acc__item summary { cursor: pointer; padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.acc__item summary::-webkit-details-marker { display: none; }
+.acc__item summary::before { content: "▸"; color: var(--muted); }
+.acc__item[open] summary::before { content: "▾"; }
+.acc__name { font-weight: 800; }
+.acc__ex { font-size: .84rem; color: var(--muted); margin-left: auto; }
+.acc__body { padding: 0 16px 16px; display: grid; gap: 8px; font-size: .92rem; }
+.acc__verdict { margin: 0; font-weight: 600; }
+.acc__line { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: baseline; }
+.tbl--wrap td, .tbl--wrap th { white-space: normal; min-width: 7em; }
+.tbl--sig td:last-child { text-align: left; white-space: normal; }
+@media (max-width: 760px) { .acc__ex { margin-left: 0; width: 100%; } .acc__line { grid-template-columns: 1fr; gap: 2px; } }
+.tbl--flow th, .tbl--flow td { padding: 9px 6px; }
+.tbl--flow .badge { font-size: .72rem; padding: 1px 8px; }
+.tbl--wrap .r { text-align: left; }
+.tbl--wrap td:last-child, .tbl--wrap th:last-child { white-space: nowrap; }

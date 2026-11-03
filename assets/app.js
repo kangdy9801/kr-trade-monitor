@@ -25,6 +25,7 @@
   const qp = new URLSearchParams(location.search).get("p");
   const KEY = KEYS.includes(qp) ? qp : KEYS[KEYS.length - 1];
   const P = KEY ? PERIODS[KEY] : null;
+  const PREVP = P && KEYS.indexOf(KEY) > 0 ? PERIODS[KEYS[KEYS.indexOf(KEY) - 1]] : null;
 
   /* ---------- 공통 조각 ---------- */
   const tile = (t) => `<div class="tile"><p class="tile__label">${esc(t.label)}</p><p class="tile__value ${t.tone ? (t.tone === "up" ? "pos" : "neg") : tone(t.value)}">${t.text ? esc(t.text) : signed(t.value) + "%"}</p>${t.text && t.value != null ? `<p class="tile__chg">${pc(t.value)} ${esc(t.sub || "")}</p>` : `<p class="tile__sub">${esc(t.sub || "")}</p>`}</div>`;
@@ -112,6 +113,101 @@
       }));
       $("#revisions").innerHTML = C.revisions.length ? `<details class="rev"><summary>이번 보도자료에서 지난 수치 ${C.revisions.length}건이 수정됐어요</summary>${table(["항목", "지난 발표", "수정 후"], C.revisions.map((v) => [esc(v.item), esc(v.before), `<b>${esc(v.after)}</b>`]))}</details>` : "";
     } else { $("#s-compare").hidden = true; $("#navCompare").hidden = true; }
+  }
+
+
+  /* ---------- 분야별 흐름 점검 ---------- */
+  const CAT_NAMES = { export: "수출", price: "가격·단가", volume: "물량·생산", ship: "출하·판매", stock: "재고−출하", invest: "투자·수주" };
+  const HEAD_NAMES = Object.assign({}, CAT_NAMES, { export: "수출(일평균)", stock: "재고 소진<br><small>출하−재고</small>" });
+  const KIND_CLS = { same: "green", mostly: "amber", diverge: "red", hold: "gray" };
+  const badge = (j) => `<span class="badge badge--${KIND_CLS[j.kind]}">${esc(j.status)}</span>`;
+  const flagsHtml = (j) => j.flags.map((f) => `<span class="flag">${esc(f)}</span>`).join("");
+  function renderSectors() {
+    const W = P.workdays;
+    $("#sectorSub").textContent = `수출(${P.labels.tradeMonth})이 좋을 때 가격·생산·출하·재고·투자(${P.labels.industryMonth})도 같은 방향인지 봐요. 수출은 조업일수(${fmt(W.prev)}일 → ${fmt(W.curr)}일)를 감안한 일평균 기준이에요.`;
+    const cats = ["export", "price", "volume", "ship", "stock", "invest"];
+    const head = ["분야"].concat(cats.map((c) => HEAD_NAMES[c])).concat(["판정"]).concat(PREVP ? ["지난달"] : []);
+    const rows = P.sectors.map((s) => {
+      const j = A.judge(P, s.id); if (!j) return null;
+      const cells = cats.map((c) => {
+        const x = j.cells[c];
+        if (!x) return '<span class="dim">—</span>';
+        const opp = c !== "export" && j.e && x.t && x.t !== j.e;
+        const v = c === "stock" ? `${signed(-x.val)}%p` : `${signed(x.val)}%`;
+        return `<span class="cell ${x.t > 0 ? "pos" : x.t < 0 ? "neg" : "dim"}${opp ? " is-opp" : ""}" title="${esc(x.s.label)} (${esc(x.s.month)})"><b>${v}</b><small>${esc(x.s.label.replace(" 재고−출하", ""))}</small></span>`;
+      });
+      const pj = PREVP ? A.judge(PREVP, s.id) : null;
+      return [`<a href="#sec-${s.id}" class="sname">${esc(s.name)}</a>`].concat(cells).concat([badge(j)]).concat(PREVP ? [pj ? badge(pj) : "—"] : []);
+    }).filter(Boolean);
+    $("#sectorTable").innerHTML = `<div class="tbl-wrap"><table class="tbl tbl--flow"><thead><tr>${head.map((h, i) => `<th scope="col"${i && i < 7 ? ' class="r"' : ""}>${h}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c, i) => i ? `<td${i < 7 ? ' class="r"' : ""}>${c}</td>` : `<th scope="row">${c}</th>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+
+    $("#sectorDetails").innerHTML = P.sectors.map((s) => {
+      const j = A.judge(P, s.id); if (!j) return "";
+      const Aln = P.alignment[s.id];
+      const pj = PREVP ? A.judge(PREVP, s.id) : null;
+      const ex = s.exports.map((e) => `${esc(e.name)} ${fmt(e.cur)}억 달러(${signed(e.yoy)}%)`).join(", ");
+      const sig = table(["구분", "지표", "기준월", "값", "메모"], Aln.signals.map((g) => [
+        esc(CAT_NAMES[g.cat]) + (g.ref ? ' <span class="dim">(참고)</span>' : ""), esc(g.label), esc(g.month),
+        g.cat === "stock" ? pc(g.value, 1, "%p") : g.cat === "export" && W0() ? `${pc(g.value)} <span class="dim">일평균 ${signed(A.adjExport(g.value, P))}%</span>` : pc(g.value),
+        `<span class="desc">${esc(g.note || "")}</span>`]), "tbl--sig");
+      return `<details class="acc__item" id="sec-${s.id}">
+        <summary><span class="acc__name">${esc(s.name)}</span>${badge(j)}${flagsHtml(j)}<span class="acc__ex">${ex}</span></summary>
+        <div class="acc__body">
+          <p class="acc__verdict">${esc(Aln.verdict)}</p>
+          ${pj ? `<p class="acc__line"><span class="tag">지난달</span><span>${badge(pj)} → ${badge(j)}</span></p>` : ""}
+          ${s.lead ? `<p class="acc__line"><span class="tag">보도자료 설명</span> <span>${esc(s.lead).replace(/\n/g, "<br>")}</span></p>` : ""}
+          ${s.breakdown.length ? `<p class="acc__line"><span class="tag">세부 품목</span> <span>${s.breakdown.map((x) => `${esc(x.name)} ${fmt(x.from, x.unit ? 0 : 1)} → ${fmt(x.to, x.unit ? 0 : 1)}${x.unit ? "만 톤" : "억"}(${signed(x.yoy)}%)`).join(", ")}</span></p>` : ""}
+          ${s.regions.length ? `<p class="acc__line"><span class="tag">지역</span> <span>${s.regions.map((r) => `${esc(r.name)} ${signed(r.yoy)}%`).join(", ")} <span class="dim">(${esc(P.labels.regionBasis.split(" 기준")[0])})</span></span></p>` : ""}
+          ${sig}
+          <p class="acc__line"><span class="tag">확인할 점</span> <span>${esc(Aln.watch)}</span></p>
+        </div></details>`;
+    }).join("");
+    if (location.hash.startsWith("#sec-")) { const d = document.querySelector(location.hash); if (d) d.open = true; }
+    document.querySelectorAll(".sname").forEach((a) => a.addEventListener("click", () => { const d = document.querySelector(a.getAttribute("href")); if (d) d.open = true; }));
+  }
+  const W0 = () => P.workdays.prev !== P.workdays.curr;
+
+  /* ---------- 조업일수 ---------- */
+  function renderWorkdays() {
+    const W = P.workdays, t = P.trade;
+    const days = t.exportMonthly.map((v, i) => Math.round(v / t.exportDaily[i] * 2) / 2);
+    $("#wdTiles").innerHTML = [
+      { label: `${W.month}월 조업일수`, text: `${fmt(W.prev)} → ${fmt(W.curr)}일`, sub: W.prev === W.curr ? "작년과 같음" : `${signed(W.curr - W.prev)}일` },
+      { label: `${W.month}월 수출 총액`, value: t.export.yoy, sub: "전년동월비" },
+      { label: `${W.month}월 일평균 수출`, value: t.export.dailyYoy, sub: `${fmt(t.export.daily)}억 달러/일` },
+      { label: `${P.labels.industryMonth} 조업일수`, text: `${fmt(days[11])}일`, sub: "산업활동 기준월" }
+    ].map(tile).join("");
+    $("#wdTable").innerHTML = table(["월"].concat(P.months.map((m) => esc(m.replace("’", "")))), [
+      ["조업일수(일)"].concat(days.map((d, i) => i === 0 || i === 12 ? `<b>${fmt(d)}</b>` : fmt(d))),
+      ["일평균 수출(억$)"].concat(t.exportDaily.map((v) => fmt(v))),
+      ["수출 증감률"].concat(t.exportYoy.map((v) => pc(v)))
+    ], "tbl--compact");
+  }
+
+  /* ---------- 지난 체크 결과 / 다음 체크 ---------- */
+  const ST_CLS = { "해소": "green", "부분": "amber", "지속": "gray", "악화": "red", "확인 불가": "gray" };
+  function renderChecks() {
+    if (PREVP && P.followups && P.followups.length) {
+      const prevItems = Object.fromEntries((PREVP.checklist || []).map((c) => [c.id, c]));
+      const cnt = {}; P.followups.forEach((f) => { cnt[f.status] = (cnt[f.status] || 0) + 1; });
+      $("#followCounts").innerHTML = ["해소", "부분", "지속", "악화"].map((k) => `<span class="badge badge--${ST_CLS[k]}">${k} ${cnt[k] || 0}</span>`).join("");
+      const secName = (id) => (P.sectors.find((x) => x.id === id) || {}).name || "";
+      const order = { "악화": 0, "지속": 1, "부분": 2, "해소": 3, "확인 불가": 4 };
+      $("#followTable").innerHTML = table(["지난번 체크 항목", "지난 → 이번", "결과"], P.followups.slice().sort((a, z) => order[a.status] - order[z.status]).map((f) => {
+        const c = prevItems[f.prevId] || {};
+        return [`<span title="${esc(c.rule || "")}">${esc(c.title || f.prevId)}</span>`, esc(f.evidence.replace(/^[^:]+:\s*/, "")), `<span class="badge badge--${ST_CLS[f.status]}">${esc(f.status)}</span>`];
+      }), "tbl--wrap");
+    } else { $("#followTitle").hidden = true; }
+
+    const nr = P.nextReleases || {};
+    $("#checkSub").textContent = `${P.label} 자료를 보고 정한 항목이에요. 다음 PDF를 올리면 같은 지표로 자동 채점돼요.`;
+    const secName = (id) => (P.sectors.find((x) => x.id === id) || {}).name || "";
+    const group = (rel, title) => {
+      const items = (P.checklist || []).filter((c) => c.release === rel);
+      if (!items.length) return "";
+      return `<h3 class="mini">${esc(title)}</h3>` + table(["항목", "지금", "판단 기준"], items.map((c) => [`<span title="${esc(c.where || "")}">${esc(c.title)}</span>`, esc(c.now), `<span class="desc">${esc(c.rule)}</span>`]), "tbl--wrap");
+    };
+    $("#checkTables").innerHTML = group("trade", `${nr.trade ? nr.trade.title : "다음 수출입 동향"} (${nr.trade ? nr.trade.date : ""})`) + group("industry", `${nr.industry ? nr.industry.title : "다음 산업활동동향"} (${nr.industry ? nr.industry.date : ""})`) + group("both", "두 자료 모두");
   }
 
   /* ---------- 기준 자료 선택 ---------- */
@@ -211,10 +307,13 @@
   initUpload();
   if (!P) {
     $("#upload").hidden = false;
-    document.querySelectorAll("main > section:not(#upload), .nav, .period").forEach((el) => { el.hidden = true; });
+    document.querySelectorAll("main > section:not(#upload), main > .lede, .nav, .period").forEach((el) => { el.hidden = true; });
     status("아직 기록이 없어요. 보도자료 PDF 2개를 올리면 분석이 시작돼요.");
     return;
   }
   renderSelect();
   render();
+  renderSectors();
+  renderWorkdays();
+  renderChecks();
 })();
