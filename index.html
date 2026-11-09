@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>수출입·산업활동 리포트</title>
+  <meta name="description" content="수출입 동향과 산업활동동향 PDF를 올리면 반도체 가격·물량, 반도체 뺀 수출, 자동차 차종별 흐름을 간결하게 정리합니다">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">본문으로 건너뛰기</a>
+
+  <header class="top">
+    <div class="wrap top__row">
+      <p class="brand">수출입·산업활동 리포트</p>
+      <div class="top__actions">
+        <label class="period"><span>기준 자료</span><select id="periodSelect" aria-label="기준 자료 선택"></select></label>
+        <button type="button" class="btn" id="uploadToggle" aria-expanded="false" aria-controls="upload">PDF 올리기</button>
+      </div>
+    </div>
+    <nav class="wrap nav" aria-label="섹션">
+      <a href="#s-summary">요약</a>
+      <a href="#s-sectors">분야별 흐름</a>
+      <a href="#s-semi">반도체</a>
+      <a href="#s-volprice">물량·가격</a>
+      <a href="#s-items">20대 품목</a>
+      <a href="#s-auto">자동차</a>
+      <a href="#s-workdays">조업일수</a>
+      <a href="#s-guide">읽는 법</a>
+      <a href="#s-compare" id="navCompare">지난달 비교</a>
+      <a href="#s-check">다음 체크</a>
+    </nav>
+  </header>
+
+  <main id="main" class="wrap">
+    <section id="upload" class="card upload" hidden aria-labelledby="upload-title">
+      <h2 id="upload-title" class="card__title">보도자료 PDF 2개 올리기</h2>
+      <p class="muted">산업통상부 「수출입 동향」과 국가데이터처 「산업활동동향」을 함께 올리세요. 예: 10월 수출입 동향 + 9월 산업활동동향. 파일은 이 브라우저 안에서만 읽어요.</p>
+      <div class="drop" id="dropZone">
+        <label class="btn btn--ghost">PDF 고르기<input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden></label>
+        <span class="muted">또는 여기에 끌어다 놓기</span>
+        <button type="button" class="btn" id="analyzeBtn" disabled>분석하기</button>
+      </div>
+      <ul class="files" id="fileList"></ul>
+      <p class="status" id="uploadStatus" role="status" aria-live="polite"></p>
+      <details class="records">
+        <summary>기록 관리 <span class="muted" id="recordInfo"></span></summary>
+        <ul class="records__list" id="recordList"></ul>
+        <p class="muted">올린 기록은 이 브라우저에만 저장돼요. 모두에게 보이게 하려면 ‘seed.js 만들기’로 받은 파일을 저장소의 <code>assets/seed.js</code>에 덮어쓰세요.</p>
+        <div class="records__actions">
+          <button type="button" class="btn btn--ghost" id="exportBtn">내 기록 내보내기</button>
+          <label class="btn btn--ghost">기록 가져오기<input type="file" id="importInput" accept="application/json,.json" hidden></label>
+          <button type="button" class="btn btn--ghost" id="seedBtn">seed.js 만들기</button>
+        </div>
+      </details>
+    </section>
+
+    <p class="lede" id="lede"></p>
+
+    <section id="s-summary" aria-labelledby="t-summary">
+      <h2 id="t-summary" class="sec">1. 보고서 요약</h2>
+      <div class="grid2" id="summaryCards"></div>
+    </section>
+
+    <section id="s-sectors" class="card" aria-labelledby="t-sectors">
+      <h2 id="t-sectors" class="card__title">2. 분야별 흐름 점검</h2>
+      <p class="card__sub" id="sectorSub"></p>
+      <div id="sectorTable"></div>
+      <p class="fine">빨강은 호조 신호, 파랑은 약세 신호, 회색은 보합(±2% 이내). 재고 소진(출하−재고)은 출하가 재고보다 빨리 늘면 플러스(호조), 재고가 쌓이면 마이너스(약세)예요. 테두리 친 칸은 수출과 반대 방향이에요.</p>
+      <h3 class="mini">분야별 자세히</h3>
+      <div class="acc" id="sectorDetails"></div>
+    </section>
+
+    <section id="s-semi" class="card" aria-labelledby="t-semi">
+      <h2 id="t-semi" class="card__title">3. 반도체 가격·물량</h2>
+      <p class="card__sub">가격은 메모리 고정가격, 물량은 반도체 생산지수예요. 가격 : 물량은 수출 증가분을 둘로 나눈 비율이에요.</p>
+      <div class="tiles" id="semiTiles"></div>
+      <div id="semiTables"></div>
+    </section>
+
+    <section id="s-volprice" class="card" aria-labelledby="t-volprice">
+      <h2 id="t-volprice" class="card__title">4. 수출 물량·가격 추이</h2>
+      <p class="card__sub">물량은 통관 수출물량(톤), 가격은 금액과 물량의 차이로 계산한 추정 단가예요.</p>
+      <div class="tiles" id="vpTiles"></div>
+      <div id="vpTables"></div>
+    </section>
+
+    <section id="s-items" class="card" aria-labelledby="t-items">
+      <h2 id="t-items" class="card__title">5. 반도체를 뺀 수출과 20대 품목 변화</h2>
+      <div class="tiles" id="itemTiles"></div>
+      <div class="chips" id="itemChips"></div>
+      <div id="itemTable"></div>
+    </section>
+
+    <section id="s-auto" class="card" aria-labelledby="t-auto">
+      <h2 id="t-auto" class="card__title">6. 자동차 차종별</h2>
+      <div class="tiles" id="autoTiles"></div>
+      <p class="note-line" id="autoText"></p>
+      <div id="autoTable"></div>
+    </section>
+
+    <section id="s-workdays" class="card" aria-labelledby="t-workdays">
+      <h2 id="t-workdays" class="card__title">7. 조업일수</h2>
+      <p class="card__sub">조업일수 = 수출액 ÷ 일평균 수출액. 명절이 낀 달은 총액보다 일평균 증감률이 정확해요.</p>
+      <div class="tiles" id="wdTiles"></div>
+      <div id="wdTable"></div>
+    </section>
+
+    <section id="s-guide" class="card" aria-labelledby="t-guide">
+      <h2 id="t-guide" class="card__title">8. 투자자라면 앞으로 이렇게 읽어보세요</h2>
+      <p class="card__sub" id="guideIntro"></p>
+      <ol class="guide" id="guideList"></ol>
+      <p class="fine">특정 종목을 사고팔라는 권유가 아니에요. 보도자료 숫자를 어떤 순서로 읽으면 좋은지 정리한 거예요.</p>
+    </section>
+
+    <section id="s-compare" class="card" aria-labelledby="t-compare">
+      <h2 id="t-compare" class="card__title">9. 지난달과 비교</h2>
+      <p class="card__sub" id="compareSub"></p>
+      <div id="compareTable"></div>
+      <h3 class="mini" id="followTitle">지난번 체크 항목 결과</h3>
+      <div class="chips" id="followCounts"></div>
+      <div id="followTable"></div>
+      <div id="revisions"></div>
+    </section>
+
+    <section id="s-check" class="card" aria-labelledby="t-check">
+      <h2 id="t-check" class="card__title">10. 다음 보도자료에서 체크할 항목</h2>
+      <p class="card__sub" id="checkSub"></p>
+      <div id="checkTables"></div>
+    </section>
+
+    <footer class="foot">
+      <p id="footSrc"></p>
+      <p>숫자는 보도자료 PDF에서 자동으로 읽었고, 문장은 그 숫자로 자동 생성했어요. 중요한 수치는 원문과 대조해 주세요.</p>
+    </footer>
+  </main>
+
+  <!-- 저장소에 올린 기본 기록 (사이트의 ‘seed.js 만들기’로 갱신) -->
+  <script src="assets/seed.js"></script>
+  <script src="assets/parser.js"></script>
+  <script src="assets/analyze.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
